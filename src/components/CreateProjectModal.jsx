@@ -8,6 +8,7 @@ function CreateProjectModal({
   newProjectDescription,
   setNewProjectDescription,
   handleCreateProject,
+  isCreatingProject, // Added prop
 }) {
   const modalRef = useRef(null);
   const nameInputRef = useRef(null);
@@ -83,10 +84,11 @@ function CreateProjectModal({
               className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all duration-200"
               placeholder="Enter a descriptive project name"
               required
+              disabled={isCreatingProject} // Disable input while creating
             />
           </div>
           
-          <div className="mb-5"> {/* Adjusted margin-bottom from mb-5 to mb-6 to maintain spacing after removing progress bar */}
+          <div className="mb-5">
             <label htmlFor="projectDescriptionModal" className="block text-sm font-medium text-gray-700 mb-1">
               Project Description<span className="text-red-500">*</span>
             </label>
@@ -98,25 +100,37 @@ function CreateProjectModal({
               className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all duration-200"
               placeholder="Describe the project goals and requirements"
               required
+              disabled={isCreatingProject} // Disable input while creating
             ></textarea>
             
           </div>
           
           {/* Action buttons */}
-          <div className="flex justify-end space-x-3 mt-6"> {/* Added mt-6 to ensure spacing if progress bar was the only thing with mb-6 */}
+          <div className="flex justify-end space-x-3 mt-6">
             <button
               type="button"
               onClick={onClose}
               className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+              disabled={isCreatingProject} // Disable cancel while creating
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 flex items-center"
-              disabled={!newProjectName || !newProjectDescription}
+              className="px-5 py-2.5 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 flex items-center justify-center min-w-[120px]"
+              disabled={!newProjectName || !newProjectDescription || isCreatingProject}
             >
-              Create Project
+              {isCreatingProject ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Creating...
+                </>
+              ) : (
+                'Create Project'
+              )}
             </button>
           </div>
         </form>

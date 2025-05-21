@@ -7,20 +7,12 @@ import {
   Download, 
   ChevronLeft, 
   ChevronRight,
+  Loader2 // Added for loading indicator
 } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router-dom';
+import apiClient from '../config/axiosConfig'; // Import apiClient
 
-// Sample project data (ideally, this would come from a shared context or API call)
-const sampleProjectsForSidebar = [
-  { id: '1', name: 'Project Alpha' },
-  { id: '2', name: 'Project Beta' },
-  { id: '3', name: 'Project Gamma' },
-  { id: '4', name: 'Project Delta' },
-  { id: '5', name: 'Project Epsilon' },
-  { id: '6', name: 'Project Zeta' },
-  { id: '7', name: 'Project Eta' },
-  { id: '8', name: 'Project Theta' },
-];
+// Removed sampleProjectsForSidebar
 
 const SidebarItem = ({ to, icon, label, active, collapsed }) => {
   return (
@@ -50,21 +42,37 @@ const SidebarItem = ({ to, icon, label, active, collapsed }) => {
 const Sidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [projectName, setProjectName] = useState(''); // State for project name
+  const [projectName, setProjectName] = useState('');
+  const [isLoadingProjectName, setIsLoadingProjectName] = useState(false);
   
   const location = useLocation(); 
   const { projectId } = useParams(); 
 
   useEffect(() => {
     if (projectId) {
-      const project = sampleProjectsForSidebar.find(p => p.id === projectId);
-      if (project) {
-        setProjectName(project.name);
-      } else {
-        setProjectName(`Project ID: ${projectId}`); // Fallback if name not found
-      }
+      setIsLoadingProjectName(true);
+      setProjectName(''); // Clear previous name while loading
+      apiClient.get(`/projects/${projectId}`)
+        .then(response => {
+          // Check common structures for single item response
+          const projectData = response.data?.data || response.data; 
+          if (projectData && projectData.project_name) {
+            setProjectName(projectData.project_name);
+          } else {
+            console.warn(`Project name not found for ID ${projectId} in API response. Response:`, response.data);
+            setProjectName(`Project ID: ${projectId}`); // Fallback if name is not in expected place
+          }
+        })
+        .catch(err => {
+          console.error(`Failed to fetch project name for ID ${projectId}:`, err);
+          setProjectName(`Project ID: ${projectId}`); // Fallback on error
+        })
+        .finally(() => {
+          setIsLoadingProjectName(false);
+        });
     } else {
       setProjectName(''); // Clear project name if no projectId
+      setIsLoadingProjectName(false);
     }
   }, [projectId]);
 
@@ -166,7 +174,16 @@ const Sidebar = () => {
         {!collapsed && projectId && ( 
           <div className="px-4 py-3 border-b border-gray-200">
             <div className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Current Project</div>
-            <div className="text-sm font-medium text-gray-900 truncate" title={projectName}>{projectName}</div>
+            {isLoadingProjectName ? (
+              <div className="flex items-center text-sm text-gray-500">
+                <Loader2 size={16} className="animate-spin mr-2" />
+                Loading...
+              </div>
+            ) : (
+              <div className="text-sm font-medium text-gray-900 truncate" title={projectName || `Project ID: ${projectId}`}>
+                {projectName || `Project ID: ${projectId}`}
+              </div>
+            )}
           </div>
         )}
 
