@@ -4,23 +4,8 @@ import {
   AlertTriangle, CheckCircle, Search, Filter, Loader2, X
 } from 'lucide-react';
 import { useParams, Link } from 'react-router-dom';
+import { toast } from 'sonner'; // Only import toast, not Toaster
 import apiClient from '../config/axiosConfig';
-
-// Toast Notification Component
-const ToastNotification = ({ message, type, onClose }) => {
-  const bgColor = type === 'success' ? 'bg-emerald-500' : 'bg-red-500';
-  const Icon = type === 'success' ? CheckCircle : AlertTriangle;
-
-  return (
-    <div className={`fixed bottom-5 right-5 ${bgColor} text-white p-4 rounded-lg shadow-lg flex items-center z-[100]`}>
-      <Icon size={20} className="mr-3" />
-      <span>{message}</span>
-      <button onClick={onClose} className="ml-4 p-1 hover:bg-white/20 rounded-full">
-        <X size={18} />
-      </button>
-    </div>
-  );
-};
 
 // Confirmation Modal Component
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Confirm", cancelText = "Cancel", isLoading = false }) => {
@@ -70,7 +55,6 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
   );
 };
 
-
 const SourceFilesPage = () => {
   const { projectId } = useParams();
   const [uploadedFiles, setUploadedFiles] = useState([]);
@@ -85,26 +69,6 @@ const SourceFilesPage = () => {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [confirmModalProps, setConfirmModalProps] = useState({});
   const [isProcessingAction, setIsProcessingAction] = useState(false);
-
-  const [toast, setToast] = useState({ message: '', type: 'success', visible: false });
-  const toastTimerRef = useRef(null);
-
-  const displayToast = (message, type = 'success', duration = 4000) => {
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-    }
-    setToast({ message, type, visible: true });
-    toastTimerRef.current = setTimeout(() => {
-      setToast(prev => ({ ...prev, visible: false }));
-    }, duration);
-  };
-
-  const closeToast = () => {
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-    }
-    setToast(prev => ({ ...prev, visible: false }));
-  };
 
   const openConfirmationModal = ({ title, message, onConfirm, confirmText = "Confirm" }) => {
     setConfirmModalProps({ title, message, onConfirm, confirmText });
@@ -123,7 +87,7 @@ const SourceFilesPage = () => {
         await confirmModalProps.onConfirm();
       } catch (e) {
         console.error("Error during confirmed action:", e);
-        displayToast("An unexpected error occurred.", "error");
+        toast.error("An unexpected error occurred.");
       } finally {
         setIsProcessingAction(false);
         closeConfirmationModal();
@@ -157,9 +121,10 @@ const SourceFilesPage = () => {
       setUploadedFiles(fetchedFiles);
     } catch (err) {
       console.error("Failed to fetch source files:", err);
-      setError(err.response?.data?.detail || "Failed to load source files.");
+      const errorMessage = err.response?.data?.detail || "Failed to load source files.";
+      setError(errorMessage);
       setUploadedFiles([]);
-      displayToast(err.response?.data?.detail || "Failed to load source files.", "error");
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -237,6 +202,7 @@ const SourceFilesPage = () => {
               ...prev, 
               [tempId]: { ...prev[tempId], isLoading: false, success: true, progress: 100 } 
             }));
+            toast.success(`File "${file.name}" uploaded successfully!`);
             setTimeout(() => {
               setUploadProgress(prev => {
                   const newProgress = { ...prev };
@@ -265,6 +231,7 @@ const SourceFilesPage = () => {
             ...prev,
             [tempId]: { ...prev[tempId], error: errorMessage, isLoading: false, progress: 0, success: false }
           }));
+          toast.error(errorMessage);
            setTimeout(() => {
             setUploadProgress(prev => {
                 const newProgress = { ...prev };
@@ -287,10 +254,10 @@ const SourceFilesPage = () => {
         try {
           await apiClient.delete(`/files/source_files/${fileIdToDelete}`);
           setUploadedFiles(prevFiles => prevFiles.filter(file => file.id !== fileIdToDelete));
-          displayToast(`File "${fileName}" deleted successfully.`, 'success');
+          toast.success(`File "${fileName}" deleted successfully.`);
         } catch (err) {
           console.error(`Failed to delete file ${fileIdToDelete}:`, err);
-          displayToast(err.response?.data?.detail || `Failed to delete "${fileName}".`, 'error');
+          toast.error(err.response?.data?.detail || `Failed to delete "${fileName}".`);
         }
       }
     });
@@ -346,28 +313,11 @@ const SourceFilesPage = () => {
     }
   };
 
-    const handleAnalyzeFile = async (fileId) => {
-    setUploadedFiles(prevFiles =>
-      prevFiles.map(f => f.id === fileId ? { ...f, analysisStatus: 'analyzing' } : f)
-    );
-    displayToast("Analysis started. File status will update shortly.", "success");
-    try {
-      await apiClient.post(`/analysis/source-file/${fileId}`);
-      setTimeout(() => fetchSourceFiles(), 2000); 
-    } catch (err) {
-      console.error(`Failed to start analysis for file ${fileId}:`, err);
-      displayToast(err.response?.data?.detail || "Failed to start analysis.", "error");
-      setUploadedFiles(prevFiles =>
-        prevFiles.map(f => f.id === fileId ? { ...f, analysisStatus: 'error' } : f)
-      );
-    }
-  };
-
   const handleAnalyzeAllFiles = async () => {
     if (uploadedFiles.length === 0 || !projectId) return;
     
     setUploadedFiles(prevFiles => prevFiles.map(f => ({ ...f, analysisStatus: 'analyzing' })));
-    displayToast("Analysis started for all files. Statuses will update shortly.", "success");
+    toast.success("Analysis started for all files. Statuses will update shortly.");
     
     try {
       // Send a single request to the new endpoint
@@ -377,7 +327,7 @@ const SourceFilesPage = () => {
       // We still need to refresh the file list after some time to get updated statuses.
     } catch (err) {
       console.error(`Failed to start analysis for project ${projectId}:`, err);
-      displayToast(err.response?.data?.detail || "Failed to start analysis for the project.", "error");
+      toast.error(err.response?.data?.detail || "Failed to start analysis for the project.");
       // Revert status for all files if the overall request fails, or handle more granularly if needed
       setUploadedFiles(prevFiles => prevFiles.map(f => ({ ...f, analysisStatus: 'error' }))); // Or revert to original status
     } finally {
@@ -424,12 +374,12 @@ const SourceFilesPage = () => {
         setSearchQuery('');
 
         if (failedDeletions.length === 0 && successfullyDeletedIds.length === filesToDelete.length) {
-          displayToast("All files deleted successfully.", 'success');
+          toast.success("All files deleted successfully.");
         } else if (successfullyDeletedIds.length > 0) {
-          displayToast(`${successfullyDeletedIds.length} files deleted. ${failedDeletions.length} files failed to delete.`, 'error');
+          toast.error(`${successfullyDeletedIds.length} files deleted. ${failedDeletions.length} files failed to delete.`);
           failedDeletions.forEach(errMsg => console.error("Deletion error:", errMsg));
         } else {
-          displayToast("Failed to delete files. Please check console for details.", 'error');
+          toast.error("Failed to delete files. Please check console for details.");
           failedDeletions.forEach(errMsg => console.error("Deletion error:", errMsg));
         }
       }
@@ -564,8 +514,8 @@ const SourceFilesPage = () => {
                 <div className="overflow-hidden rounded-lg border border-gray-200">
                   <div className="bg-gray-50 px-4 py-3 hidden md:grid grid-cols-12 gap-4 text-sm font-medium text-gray-600">
                     <div className="col-span-6">File Name</div>
-                    <div className="col-span-3">Status</div>
-                    <div className="col-span-3 text-right">Actions</div>
+                    <div className="col-span-4">Status</div>
+                    <div className="col-span-2 text-right">Actions</div>
                   </div>
                   <ul className="divide-y divide-gray-200">
                     {filteredFiles.map((file) => (
@@ -574,21 +524,16 @@ const SourceFilesPage = () => {
                           <div className="flex-shrink-0 w-9 h-9 rounded-md bg-gray-100 flex items-center justify-center"> {getFileIcon(file.name)} </div>
                           <div className="min-w-0"> <p className="font-medium text-gray-800 truncate" title={file.name}>{file.name}</p> </div>
                         </div>
-                        <div className="md:col-span-3 hidden md:flex items-center gap-1.5">
+                        <div className="md:col-span-4 hidden md:flex items-center gap-1.5">
                           {getStatusIcon(file.analysisStatus)}
                           <span className="text-sm">{getStatusText(file.analysisStatus)}</span>
                         </div>
-                        <div className="md:col-span-3 flex gap-1.5 justify-end">
+                        <div className="md:col-span-2 flex gap-1.5 justify-end">
                           <button
                             className="p-2 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                             title="View file content" onClick={() => handleViewFile(file)}
                             disabled={isProcessingAction}
                           > <Eye size={18} /> </button>
-                          <button
-                            className="p-2 rounded-lg text-gray-500 hover:text-teal-600 hover:bg-teal-50 transition-colors disabled:opacity-50"
-                            title="Analyze file" onClick={() => handleAnalyzeFile(file.id)}
-                            disabled={isProcessingAction || ['analyzing', 'analyzed', 'completed'].includes(file.analysisStatus)}
-                          > <Zap size={18} /> </button>
                           <button
                             className="p-2 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
                             onClick={() => handleDeleteFile(file.id, file.name)} title="Delete file"
@@ -630,6 +575,8 @@ const SourceFilesPage = () => {
         </div>
       </div>
 
+      {/* Toaster removed - now global in Layout.jsx */}
+
       {isViewModalOpen && fileToView && (
         <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50 transition-opacity duration-300 ease-in-out backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col transform transition-all duration-300 ease-in-out scale-100">
@@ -660,15 +607,6 @@ const SourceFilesPage = () => {
         confirmText={confirmModalProps.confirmText}
         isLoading={isProcessingAction}
       />
-
-      {toast.visible && (
-        <ToastNotification
-          message={toast.message}
-          type={toast.type}
-          onClose={closeToast}
-          key={toast.visible ? Date.now() : null}
-        />
-      )}
     </div>
   );
 };

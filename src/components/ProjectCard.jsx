@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Trash2, Calendar, ChevronRight } from 'lucide-react'; // Added Calendar and ChevronRight icons
 
-const ProjectCard = ({ project, onDeleteRequest }) => {
+const ProjectCard = ({ project, onDeleteRequest, onCardClick }) => {
   const { id, name, description, lastUpdated } = project;
 
   // Format date to be more readable
@@ -32,8 +32,20 @@ const ProjectCard = ({ project, onDeleteRequest }) => {
     onDeleteRequest(id, name);
   };
 
+  // Handle card click
+  const handleCardClick = (e) => {
+    // Only trigger card click if not clicking on interactive elements
+    if (e.target.closest('button') || e.target.closest('a')) {
+      return;
+    }
+    onCardClick(id);
+  };
+
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 flex flex-col h-full relative group">
+    <div 
+      onClick={handleCardClick}
+      className="cursor-pointer bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 flex flex-col h-full relative group"
+    >
       {/* Card Content Container */}
       <div className="p-5 flex flex-col h-full">
         {/* Header Section */}
@@ -60,6 +72,7 @@ const ProjectCard = ({ project, onDeleteRequest }) => {
         <div className="flex justify-between items-center gap-2 mt-2">
           <Link
             to={`/project/${id}`}
+            onClick={(e) => e.stopPropagation()} // Prevent card click when clicking the button
             className="flex-grow inline-flex items-center justify-center bg-teal-600 hover:bg-teal-700 focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:outline-none text-white font-medium py-2 px-4 rounded-md text-sm transition-all duration-200"
             aria-label={`Open ${name} project details`}
           >

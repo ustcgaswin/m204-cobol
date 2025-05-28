@@ -1,33 +1,12 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react'; // Added useRef
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { toast } from 'sonner'; // Only import toast, not Toaster
+import { useNavigate } from 'react-router-dom';
 import ProjectCard from './components/ProjectCard.jsx';
 import CreateProjectModal from './components/CreateProjectModal.jsx';
 import apiClient from './config/axiosConfig.js';
-import { AlertTriangle, CheckCircle, X, Loader2 } from 'lucide-react'; // Added icons for modal and toast
+import { AlertTriangle, Loader2 } from 'lucide-react';
 
 const PROJECTS_PER_PAGE = 6;
-
-// Toast Notification Component (can be moved to a separate file)
-const ToastNotification = ({ message, type, onClose }) => {
-  const bgColor = type === 'success' ? 'bg-emerald-500' : 'bg-red-500';
-  const Icon = type === 'success' ? CheckCircle : AlertTriangle;
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      onClose();
-    }, 4000);
-    return () => clearTimeout(timer);
-  }, [onClose]);
-
-  return (
-    <div className={`fixed bottom-5 right-5 ${bgColor} text-white p-4 rounded-lg shadow-lg flex items-center z-[1000]`}>
-      <Icon size={20} className="mr-3" />
-      <span>{message}</span>
-      <button onClick={onClose} className="ml-4 p-1 hover:bg-white/20 rounded-full">
-        <X size={18} />
-      </button>
-    </div>
-  );
-};
 
 // Confirmation Modal Component (can be moved to a separate file)
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Confirm", cancelText = "Cancel", isLoading = false }) => {
@@ -77,8 +56,8 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
   );
 };
 
-
 function App() {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -92,28 +71,10 @@ function App() {
 
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Toast Notification State
-  const [toast, setToast] = useState({ message: '', type: 'success', visible: false });
-  const toastTimerRef = useRef(null);
-
   // Confirmation Modal State
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [confirmModalProps, setConfirmModalProps] = useState({});
-  const [isProcessingAction, setIsProcessingAction] = useState(false); // For modal action loading
-
-  const displayToast = (message, type = 'success') => {
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-    }
-    setToast({ message, type, visible: true });
-  };
-
-  const closeToast = () => {
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-    }
-    setToast(prev => ({ ...prev, visible: false }));
-  };
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
   
   const openConfirmationModal = (props) => {
     setConfirmModalProps(props);
@@ -132,7 +93,7 @@ function App() {
         await confirmModalProps.onConfirm();
       } catch (e) {
         console.error("Error during confirmed action:", e);
-        displayToast("An unexpected error occurred.", "error");
+        toast.error("An unexpected error occurred.");
       } finally {
         setIsProcessingAction(false);
         closeConfirmationModal();
@@ -140,6 +101,10 @@ function App() {
     }
   };
 
+  // Add this function to handle card clicks
+  const handleProjectCardClick = (projectId) => {
+    navigate(`/project/${projectId}`);
+  };
 
   // Fetch Projects
   const fetchProjects = useCallback(async (search = searchTerm) => {
@@ -176,31 +141,30 @@ function App() {
         setCurrentPage(1);
       }
 
-
     } catch (err) {
       console.error("Failed to fetch projects:", err);
       setError(err.response?.data?.detail || "Failed to fetch projects. Please try again.");
       setProjects([]);
       setTotalPages(1); // Reset total pages on error
       setCurrentPage(1); // Reset current page on error
+      toast.error(err.response?.data?.detail || "Failed to fetch projects. Please try again.");
     } finally {
       setIsLoading(false);
     }
-  }, [searchTerm, currentPage]); // Added currentPage to dependencies of fetchProjects
+  }, [searchTerm, currentPage]);
 
   useEffect(() => {
     fetchProjects(searchTerm);
-  }, [fetchProjects, searchTerm]); // currentPage removed from here, handled by fetchProjects deps
+  }, [fetchProjects, searchTerm]);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);
 
-
   const handleCreateProject = async (e) => {
     e.preventDefault();
     if (!newProjectName.trim() || !newProjectDescription.trim()) {
-      displayToast("Please provide both project name and description.", "error");
+      toast.error("Please provide both project name and description.");
       return;
     }
     setIsCreatingProject(true); 
@@ -215,18 +179,18 @@ function App() {
         setNewProjectName('');
         setNewProjectDescription('');
         setShowCreateForm(false);
-        displayToast("Project created successfully!", "success");
+        toast.success("Project created successfully!");
         // No need to set searchTerm to '', let fetchProjects handle current search
         await fetchProjects(searchTerm); // Refetch with current search term
         setCurrentPage(1); // Go to first page after creation
       } else {
         console.warn('Project created, but response was not as expected:', response);
-        displayToast('Project created, but there was an issue updating the list.', "error");
+        toast.error('Project created, but there was an issue updating the list.');
         await fetchProjects(searchTerm);
       }
     } catch (err) {
       console.error("Failed to create project:", err);
-      displayToast(err.response?.data?.detail || err.message || "Failed to create project.", "error");
+      toast.error(err.response?.data?.detail || err.message || "Failed to create project.");
     } finally {
       setIsCreatingProject(false); 
     }
@@ -244,7 +208,7 @@ function App() {
   const executeDeleteProject = async (projectId, projectName) => {
     try {
       await apiClient.delete(`/projects/${projectId}`);
-      displayToast(`Project "${projectName}" deleted successfully.`, 'success');
+      toast.success(`Project "${projectName}" deleted successfully.`);
       
       // Update projects state locally
       const updatedProjects = projects.filter(p => p.id !== projectId);
@@ -267,7 +231,7 @@ function App() {
 
     } catch (err) {
       console.error(`Failed to delete project ${projectId}:`, err);
-      displayToast(err.response?.data?.detail || `Failed to delete project "${projectName}".`, 'error');
+      toast.error(err.response?.data?.detail || `Failed to delete project "${projectName}".`);
     }
   };
 
@@ -276,7 +240,6 @@ function App() {
     const indexOfFirstProject = indexOfLastProject - PROJECTS_PER_PAGE;
     return projects.slice(indexOfFirstProject, indexOfLastProject);
   }, [projects, currentPage]);
-
 
   const paginate = (pageNumber) => {
     if (pageNumber < 1 || (pageNumber > totalPages && totalPages > 0) || totalPages === 0 && pageNumber !==1 ) return;
@@ -348,7 +311,8 @@ function App() {
               <ProjectCard 
                 key={project.id} 
                 project={project} 
-                onDeleteRequest={handleDeleteProjectRequest} // Pass delete handler
+                onDeleteRequest={handleDeleteProjectRequest}
+                onCardClick={handleProjectCardClick}
               />
             ))}
           </div>
@@ -406,14 +370,7 @@ function App() {
         isLoading={isProcessingAction}
       />
 
-      {/* Toast Notification */}
-      {toast.visible && (
-        <ToastNotification
-          message={toast.message}
-          type={toast.type}
-          onClose={closeToast}
-        />
-      )}
+      {/* Toaster removed - now global in Layout.jsx */}
     </div>
   );
 }

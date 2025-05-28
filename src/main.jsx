@@ -22,7 +22,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/project/:projectId/inventory" element={<InventoryPage />} />
           <Route path="/project/:projectId/requirements" element={<RequirementsPage />} />
           <Route path="/project/:projectId/artifacts" element={<ArtifactsPage />} /> {/* Add route for ArtifactsPage */}
-          {/* ... other routes ... */}
+
         </Route>  
       </Routes>
     </Router>

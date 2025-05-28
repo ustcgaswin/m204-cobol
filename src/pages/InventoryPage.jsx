@@ -13,7 +13,7 @@ import {
   Loader2, // For loading states
   AlertTriangle // For error messages
 } from 'lucide-react';
-import apiClient from '../config/axiosConfig';
+import apiClient from "../config/axiosConfig"
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -164,9 +164,6 @@ const InventoryPage = () => {
   const [isContentModalOpen, setIsContentModalOpen] = useState(false);
   const [modalContent, setModalContent] = useState({ title: '', content: '' });
 
-  // State for requirements generation
-  const [isGeneratingRequirements, setIsGeneratingRequirements] = useState(false);
-  const [generationError, setGenerationError] = useState(null);
 
   const openContentModal = (title, contentText) => {
     setModalContent({ title, content: contentText });
@@ -287,24 +284,79 @@ const InventoryPage = () => {
   };
 
   const handleSave = async () => {
-    if (!editedItemData || !currentTabConfig || !(activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures')) return;
+  if (!editedItemData || !currentTabConfig || !(activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures')) return;
 
-    // TODO: Implement backend save logic here
-    // For now, just updating local state
-    setInventoryData(prevInventory => {
-      const updatedDataArray = prevInventory[currentTabConfig.dataKey].map(item =>
-        item._internalId === editedItemData._internalId ? editedItemData : item
-      );
-      return {
-        ...prevInventory,
-        [currentTabConfig.dataKey]: updatedDataArray,
-      };
-    });
-    setSelectedItem(editedItemData);
-    setIsEditing(false);
-    setEditedItemData(null);
-    alert("Changes saved locally. Backend save not implemented.");
-  };
+  try {
+    let updateEndpoint = '';
+    let updatePayload = {};
+
+    // Determine the correct endpoint and payload based on the active tab
+    switch (activeTab) {
+      case 'm204DbFiles':
+        updateEndpoint = `/projects/${projectId}/metadata/m204_files/${editedItemData._internalId}`;
+        updatePayload = {
+          target_vsam_dataset_name: editedItemData.targetVsamDatasetName,
+          target_vsam_type: editedItemData.targetVsamType,
+          primary_key_field_name: editedItemData.primaryKeyFieldName,
+          // Include field updates if structure exists
+          fields: editedItemData.structure ? editedItemData.structure.map(field => ({
+            field_name: field.fieldName,
+            attributes_text: field.m204Attributes
+          })) : undefined
+        };
+        break;
+
+      case 'variables':
+        updateEndpoint = `/projects/${projectId}/metadata/variables/${editedItemData._internalId}`;
+        updatePayload = {
+          variable_name: editedItemData.name,
+          cobol_mapped_variable_name: editedItemData.cobolMappedVariableName
+        };
+        break;
+
+      case 'procedures':
+        updateEndpoint = `/projects/${projectId}/metadata/procedures/${editedItemData._internalId}`;
+        updatePayload = {
+          target_cobol_program_name: editedItemData.targetCobolProgram
+        };
+        break;
+
+      default:
+        throw new Error('Unsupported tab for saving');
+    }
+
+    // Make the API call to update the backend
+    const response = await apiClient.put(updateEndpoint, updatePayload);
+
+    if (response.status === 200) {
+      // Update local state with the response data
+      const updatedItem = currentTabConfig.mapper(response.data);
+      updatedItem.key = updatedItem._internalId || updatedItem.name + Date.now();
+
+      setInventoryData(prevInventory => {
+        const updatedDataArray = prevInventory[currentTabConfig.dataKey].map(item =>
+          item._internalId === editedItemData._internalId ? updatedItem : item
+        );
+        return {
+          ...prevInventory,
+          [currentTabConfig.dataKey]: updatedDataArray,
+        };
+      });
+
+      setSelectedItem(updatedItem);
+      setIsEditing(false);
+      setEditedItemData(null);
+      alert("Changes saved successfully!");
+    }
+  } catch (error) {
+    console.error("Failed to save changes:", error);
+    const errorMessage = error.response?.data?.detail || error.message || "Failed to save changes to the server.";
+    alert(`Error saving changes: ${errorMessage}`);
+    
+    // Optionally, you can choose to keep the editing state open so user can retry
+    // or revert to the original state
+  }
+};
 
   const getEditableFields = (item) => {
     if (!item || !currentTabConfig) return {};
@@ -564,27 +616,15 @@ const InventoryPage = () => {
   };
 
   const handleGenerateRequirements = async () => {
-    setIsGeneratingRequirements(true);
-    setGenerationError(null);
+    // Navigate immediately to requirements page
+    navigate(`/project/${projectId}/requirements`);
+    
     try {
       const requestBody = {};
-      const response = await apiClient.post(`/requirements/projects/${projectId}/generate-document`, requestBody);
-
-      if (response.data && response.data.data && response.data.data.requirement_document_id) {
-        alert('Requirements document generated successfully! Navigating to view it.');
-        navigate(`/project/${projectId}/requirements`);
-      } else {
-        const message = response.data?.message || "Failed to generate requirements. Unexpected response from server.";
-        setGenerationError(message);
-        alert(message);
-      }
+      // Fire and forget - let the requirements page handle the loading
+      apiClient.post(`/requirements/projects/${projectId}/generate-document`, requestBody);
     } catch (err) {
-      console.error("Failed to generate requirements:", err);
-      const errorMessage = err.response?.data?.detail || err.message || "An error occurred while generating the requirements document.";
-      setGenerationError(errorMessage);
-      alert(`Error: ${errorMessage}`);
-    } finally {
-      setIsGeneratingRequirements(false);
+      console.error("Failed to initiate requirements generation:", err);
     }
   };
 
@@ -607,31 +647,15 @@ const InventoryPage = () => {
               }}
             />
           </div>
-          <button
+            <button
             onClick={handleGenerateRequirements}
-            disabled={isGeneratingRequirements}
-            className="ml-4 p-3 px-8 bg-gradient-to-r from-teal-600 via-teal-700 to-teal-800 text-white rounded-md hover:opacity-90 text-sm flex items-center disabled:opacity-70 disabled:cursor-not-allowed"
+            className="ml-4 p-3 px-8 bg-gradient-to-r from-teal-600 via-teal-700 to-teal-800 text-white rounded-md hover:opacity-90 text-sm flex items-center"
             title="Generate Requirements Document"
           >
-            {isGeneratingRequirements ? (
-              <>
-                <Loader2 size={20} className="animate-spin mr-2" />
-                Generating...
-              </>
-            ) : (
-              <>
-                Generate Requirements
-                <ChevronRight size={20} className="ml-2" />
-              </>
-            )}
+            Generate Requirements
+            <ChevronRight size={20} className="ml-2" />
           </button>
         </div>
-        {generationError && (
-          <div className="p-2 text-center text-sm text-red-600 bg-red-50 border-b border-red-200">
-            <AlertTriangle size={15} className="inline mr-1" /> {generationError}
-          </div>
-        )}
-
         {/* Tabs Navigation */}
         <div className="border-b border-gray-200 bg-white">
           <nav className="-mb-px flex space-x-0 overflow-x-auto" aria-label="Tabs">
