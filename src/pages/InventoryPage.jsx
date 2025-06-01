@@ -29,16 +29,22 @@ const mapM204DbFile = (item) => ({
   name: item.m204_file_name,
   type: 'M204 DB File',
   m204Attributes: item.m204_attributes || 'N/A',
-  definedAtLine: item.defined_at_line === null || item.defined_at_line === undefined ? 'N/A' : item.defined_at_line,
+  definedAtLine: item.definition_line_number_start === null || item.definition_line_number_start === undefined ? 'N/A' : item.definition_line_number_start,
   targetVsamDatasetName: item.target_vsam_dataset_name || 'N/A',
   targetVsamType: item.target_vsam_type || 'N/A',
   primaryKeyFieldName: item.primary_key_field_name || 'N/A',
-  structure: item.fields ? item.fields.map(field => ({
-    fieldName: field.field_name,
-    dataType: field.attributes_json?.type || 'N/A',
-    length: field.attributes_json?.length === undefined ? 'N/A' : field.attributes_json.length,
-    m204Attributes: field.attributes_text || 'N/A',
+  m204LogicalDatasetName: item.m204_logical_dataset_name || 'N/A',
+  structure: item.file_definition_json?.fields ? Object.entries(item.file_definition_json.fields).map(([fieldName, fieldData]) => ({
+    fieldName: fieldName,
+    length: fieldData.vsam_suggestions?.vsam_length || 'N/A',
+    m204Attributes: fieldData.attributes ? fieldData.attributes.join(', ') : 'N/A',
+    lineNumber: fieldData.line_number || 'N/A',
+    isKeyComponent: fieldData.vsam_suggestions?.is_key_component || false,
+    keyOrder: fieldData.vsam_suggestions?.key_order || 'N/A',
+    cobolPictureClause: fieldData.vsam_suggestions?.cobol_picture_clause || 'N/A',
+    suggestedCobolFieldName: fieldData.vsam_suggestions?.suggested_cobol_field_name || 'N/A',
   })) : [],
+  file_definition_json: item.file_definition_json || null,
   _internalId: item.m204_file_id,
   _definedInInputSourceId: item.defined_in_input_source_id,
 });
@@ -47,13 +53,13 @@ const mapProcedure = (item) => ({
   name: item.m204_proc_name,
   type: 'Procedure',
   procedureType: item.m204_proc_type,
-  parameters: item.m204_parameters_string, // Still mapped for potential future use or if API sends it
+  parameters: item.m204_parameters_string,
   parsedParameters: item.parsed_parameters_json || null,
   startLine: item.start_line_in_source,
   endLine: item.end_line_in_source,
   summary: item.summary || 'N/A',
   procedureContent: item.procedure_content || 'N/A',
-  targetCobolProgram: item.target_cobol_program_name || 'N/A',
+  targetCobolFunctionName: item.target_cobol_function_name || 'N/A', // Updated field
   lines: (item.end_line_in_source && item.start_line_in_source) ? (item.end_line_in_source - item.start_line_in_source + 1) : 'N/A',
   complexity: item.complexity || 'N/A',
   isRunnableMain: item.is_runnable_main === null || item.is_runnable_main === undefined ? 'N/A' : String(item.is_runnable_main),
@@ -65,30 +71,69 @@ const mapVariable = (item) => ({
   name: item.variable_name,
   type: 'Variable',
   scope: item.scope,
-  dataType: item.variable_type || (item.attributes?.TYPE) || 'N/A',
+  dataType: item.variable_type || (item.attributes?.declared_m204_type) || 'N/A',
   sourceLine: item.definition_line_number,
   attributes: item.attributes,
-  cobolMappedVariableName: item.cobol_mapped_variable_name || 'N/A', // Updated field
+  m204Type: item.attributes?.declared_m204_type || 'N/A',
+  length: item.attributes?.length || 'N/A',
+  arrayDimensions: item.attributes?.array_dimensions ? item.attributes.array_dimensions.join(', ') : 'N/A',
+  otherKeywords: item.attributes?.other_m204_keywords ? item.attributes.other_m204_keywords.join(', ') : 'N/A',
+  cobolMappedVariableName: item.cobol_mapped_variable_name || 'N/A',
+  procedureName: item.procedure_name || 'N/A',
   cobolPic: 'N/A',
   cobolLevel: 'N/A',
   _internalId: item.variable_id,
   _inputSourceId: item.input_source_id,
 });
 
-const mapOtherM204File = (item) => ({
-  name: item.m204_file_name,
-  type: 'Other M204 File',
-  m204Attributes: item.m204_attributes || 'N/A',
-  definedAtLine: item.defined_at_line === null || item.defined_at_line === undefined ? 'N/A' : item.defined_at_line,
-  m204LogicalDatasetName: item.m204_logical_dataset_name || 'N/A',
-  imageStatements: item.image_statements || [],
-  _internalId: item.m204_file_id,
-  _definedInInputSourceId: item.defined_in_input_source_id,
-});
+const mapOtherM204File = (item) => {
+  let imageStatementsForModal = [];
+  if (item.image_statements && Array.isArray(item.image_statements) && item.image_statements.length > 0) {
+    imageStatementsForModal = item.image_statements;
+  } else if (item.file_definition_json?.image_definitions && Array.isArray(item.file_definition_json.image_definitions)) {
+    imageStatementsForModal = item.file_definition_json.image_definitions.map(def => {
+      let content = `IMAGE ${def.image_name || 'UnnamedImage'}\n`;
+      if (def.fields && Array.isArray(def.fields)) {
+        content += def.fields.map(f => {
+          let fieldDef = `  ${f.field_name || 'UnnamedField'} ${f.m204_type || 'UNKNOWN_TYPE'}`;
+          if (f.length !== null && f.length !== undefined) {
+            fieldDef += `(${f.length})`;
+          } else if (f.digits !== null && f.digits !== undefined) {
+            fieldDef += `(${f.digits}${f.decimal_places !== null && f.decimal_places !== undefined ? `,${f.decimal_places}` : ''})`;
+          }
+          return fieldDef;
+        }).join('\n');
+      }
+      return { image_name: def.image_name || 'UnnamedImage', image_content: content };
+    });
+  }
+
+  return {
+    name: item.m204_file_name,
+    type: 'Other M204 File',
+    m204Attributes: item.m204_attributes || 'N/A',
+    definedAtLine: item.definition_line_number_start === null || item.definition_line_number_start === undefined ? 'N/A' : item.definition_line_number_start,
+    m204LogicalDatasetName: item.m204_logical_dataset_name || 'N/A',
+    targetVsamDatasetName: item.target_vsam_dataset_name || 'N/A',
+    imageStatements: imageStatementsForModal,
+    parsedImageFields: item.file_definition_json?.image_definitions?.[0]?.fields?.map(field => ({
+      fieldName: field.field_name, // Keep original field name for matching
+      suggestedCobolFieldName: field.suggested_cobol_field_name || 'N/A',
+      position: field.position !== null && field.position !== undefined ? field.position : 'N/A',
+      m204Type: field.m204_type || 'N/A',
+      dataType: field.data_type || 'N/A',
+      length: field.length !== null && field.length !== undefined ? field.length : (field.digits !== null && field.digits !== undefined ? `${field.digits}${field.decimal_places !== null && field.decimal_places !== undefined ? '.' + field.decimal_places : ''}` : 'N/A'),
+      digits: field.digits !== null && field.digits !== undefined ? field.digits : 'N/A',
+      decimalPlaces: field.decimal_places !== null && field.decimal_places !== undefined ? field.decimal_places : 'N/A',
+      cobolPictureClause: field.cobol_layout_suggestions?.cobol_picture_clause || 'N/A',
+    })) || [],
+    file_definition_json: item.file_definition_json || null, // Pass through the original structure
+    _internalId: item.m204_file_id,
+    _definedInInputSourceId: item.defined_in_input_source_id,
+  };
+};
 
 // --- Content View Modal Component ---
-
-// Define custom components for rendering Markdown in the modal
 const modalMarkdownComponents = {
   h1: (props) => <h1 className="text-xl font-semibold mb-3" {...props} />,
   h2: (props) => <h2 className="text-lg font-semibold mb-2" {...props} />,
@@ -109,7 +154,7 @@ const modalMarkdownComponents = {
   td: (props) => <td className="border border-gray-300 px-2 py-1" {...props} />,
 };
 
-const ContentViewModal = ({ isOpen, onClose, title, content }) => {
+const ContentViewModal = ({ isOpen, onClose, title, content, renderAsMarkdown = false }) => {
   if (!isOpen) return null;
 
   return (
@@ -126,12 +171,16 @@ const ContentViewModal = ({ isOpen, onClose, title, content }) => {
           </button>
         </div>
         <div className="overflow-auto flex-grow p-5">
-          <ReactMarkdown
-            components={modalMarkdownComponents}
-            remarkPlugins={[remarkGfm]}
-          >
-            {content || ''}
-          </ReactMarkdown>
+          {renderAsMarkdown ? (
+            <ReactMarkdown
+              components={modalMarkdownComponents}
+              remarkPlugins={[remarkGfm]}
+            >
+              {content || ''}
+            </ReactMarkdown>
+          ) : (
+            <pre className="text-sm whitespace-pre-wrap">{content || ''}</pre>
+          )}
         </div>
         <div className="flex justify-end items-center gap-3 p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
           <button
@@ -149,7 +198,7 @@ const ContentViewModal = ({ isOpen, onClose, title, content }) => {
 
 const InventoryPage = () => {
   const { projectId } = useParams();
-  const navigate = useNavigate(); // Initialize useNavigate
+  const navigate = useNavigate();
   const [inventoryData, setInventoryData] = useState(initialInventoryData);
   const [activeTab, setActiveTab] = useState('m204DbFiles');
   const [searchTerm, setSearchTerm] = useState('');
@@ -160,19 +209,18 @@ const InventoryPage = () => {
   const [loadingStates, setLoadingStates] = useState({});
   const [errorStates, setErrorStates] = useState({});
 
-  // Content Modal State
   const [isContentModalOpen, setIsContentModalOpen] = useState(false);
-  const [modalContent, setModalContent] = useState({ title: '', content: '' });
+  const [modalContent, setModalContent] = useState({ title: '', content: '', renderAsMarkdown: false });
 
 
-  const openContentModal = (title, contentText) => {
-    setModalContent({ title, content: contentText });
+  const openContentModal = (title, contentText, renderAsMarkdown = false) => {
+    setModalContent({ title, content: contentText, renderAsMarkdown });
     setIsContentModalOpen(true);
   };
 
   const closeContentModal = () => {
     setIsContentModalOpen(false);
-    setModalContent({ title: '', content: '' });
+    setModalContent({ title: '', content: '', renderAsMarkdown: false });
   };
 
   const tabsConfig = useMemo(() => [
@@ -242,7 +290,7 @@ const InventoryPage = () => {
 
 
   const handleEdit = () => {
-    if (!selectedItem || !(activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures')) return;
+    if (!selectedItem || !(activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures' || activeTab === 'otherDatasets')) return;
     setIsEditing(true);
     setEditedItemData(JSON.parse(JSON.stringify(selectedItem)));
   };
@@ -257,7 +305,7 @@ const InventoryPage = () => {
     const originalItem = selectedItem;
 
     let processedValue = value;
-    if (structureIndex !== undefined && originalItem?.structure?.[structureIndex]) {
+    if (activeTab === 'm204DbFiles' && structureIndex !== undefined && typeof structureIndex === 'number' && originalItem?.structure?.[structureIndex]) {
         const originalFieldStructure = originalItem.structure[structureIndex];
         if (name === 'length' || (typeof originalFieldStructure[name] === 'number' && originalFieldStructure[name] !== 'N/A')) {
             processedValue = value === '' ? null : parseFloat(value);
@@ -273,24 +321,28 @@ const InventoryPage = () => {
     }
 
     setEditedItemData(prev => {
-      if (structureIndex !== undefined && prev.structure) {
+      if (activeTab === 'm204DbFiles' && structureIndex !== undefined && typeof structureIndex === 'number' && prev.structure) {
         const updatedStructure = prev.structure.map((field, index) =>
           index === structureIndex ? { ...field, [name]: processedValue } : field
         );
         return { ...prev, structure: updatedStructure };
+      } else if (activeTab === 'otherDatasets' && structureIndex !== undefined && typeof structureIndex === 'number' && prev.parsedImageFields) {
+        const updatedParsedImageFields = prev.parsedImageFields.map((field, index) =>
+          index === structureIndex ? { ...field, [name]: processedValue } : field
+        );
+        return { ...prev, parsedImageFields: updatedParsedImageFields };
       }
       return { ...prev, [name]: processedValue };
     });
   };
 
   const handleSave = async () => {
-  if (!editedItemData || !currentTabConfig || !(activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures')) return;
+  if (!editedItemData || !currentTabConfig || !(activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures' || activeTab === 'otherDatasets')) return;
 
   try {
     let updateEndpoint = '';
     let updatePayload = {};
 
-    // Determine the correct endpoint and payload based on the active tab
     switch (activeTab) {
       case 'm204DbFiles':
         updateEndpoint = `/projects/${projectId}/metadata/m204_files/${editedItemData._internalId}`;
@@ -298,10 +350,11 @@ const InventoryPage = () => {
           target_vsam_dataset_name: editedItemData.targetVsamDatasetName,
           target_vsam_type: editedItemData.targetVsamType,
           primary_key_field_name: editedItemData.primaryKeyFieldName,
-          // Include field updates if structure exists
           fields: editedItemData.structure ? editedItemData.structure.map(field => ({
             field_name: field.fieldName,
-            attributes_text: field.m204Attributes
+            attributes_text: field.m204Attributes,
+            cobol_picture_clause: field.cobolPictureClause,
+            suggested_cobol_field_name: field.suggestedCobolFieldName
           })) : undefined
         };
         break;
@@ -317,19 +370,48 @@ const InventoryPage = () => {
       case 'procedures':
         updateEndpoint = `/projects/${projectId}/metadata/procedures/${editedItemData._internalId}`;
         updatePayload = {
-          target_cobol_program_name: editedItemData.targetCobolProgram
+          target_cobol_function_name: editedItemData.targetCobolFunctionName // Updated field
         };
         break;
+      
+      case 'otherDatasets': {
+        updateEndpoint = `/projects/${projectId}/metadata/m204_files/${editedItemData._internalId}`;
+        
+        let newFileDefinitionJson = JSON.parse(JSON.stringify(selectedItem.file_definition_json || { image_definitions: [] }));
 
+        if (newFileDefinitionJson.image_definitions && newFileDefinitionJson.image_definitions.length > 0 && editedItemData.parsedImageFields) {
+          const originalImageDefinitionFields = newFileDefinitionJson.image_definitions[0].fields || [];
+          newFileDefinitionJson.image_definitions[0].fields = originalImageDefinitionFields.map(origField => {
+            const editedFieldData = editedItemData.parsedImageFields.find(pf => pf.fieldName === origField.field_name);
+            if (editedFieldData) {
+              return {
+                ...origField,
+                suggested_cobol_field_name: editedFieldData.suggestedCobolFieldName,
+                cobol_layout_suggestions: {
+                  ...(origField.cobol_layout_suggestions || {}),
+                  cobol_picture_clause: editedFieldData.cobolPictureClause,
+                },
+              };
+            }
+            return origField;
+          });
+        }
+        
+        updatePayload = {
+          name: editedItemData.name, // Assuming m204_file_name can be updated
+          m204_logical_dataset_name: editedItemData.m204LogicalDatasetName,
+          target_vsam_dataset_name: editedItemData.targetVsamDatasetName,
+          file_definition_json: newFileDefinitionJson,
+        };
+        break;
+      }
       default:
         throw new Error('Unsupported tab for saving');
     }
 
-    // Make the API call to update the backend
     const response = await apiClient.put(updateEndpoint, updatePayload);
 
     if (response.status === 200) {
-      // Update local state with the response data
       const updatedItem = currentTabConfig.mapper(response.data);
       updatedItem.key = updatedItem._internalId || updatedItem.name + Date.now();
 
@@ -352,21 +434,18 @@ const InventoryPage = () => {
     console.error("Failed to save changes:", error);
     const errorMessage = error.response?.data?.detail || error.message || "Failed to save changes to the server.";
     alert(`Error saving changes: ${errorMessage}`);
-    
-    // Optionally, you can choose to keep the editing state open so user can retry
-    // or revert to the original state
   }
 };
 
-  const getEditableFields = (item) => {
+
+   const getEditableFields = (item) => {
     if (!item || !currentTabConfig) return {};
     const baseDisplayFields = { name: "Name", type: "Type" };
     let specificFields = {};
 
-    // Dynamically add other fields from the item, excluding known non-display/internal fields
     for (const key in item) {
         if (Object.prototype.hasOwnProperty.call(item, key) &&
-            !['_internalId', '_definedInInputSourceId', '_inputSourceId', 'key', 'name', 'type', 'structure', 'attributes', 'parsedParameters', 'parameters', 'createdAt', 'updatedAt', 'sourceFile', 'mappingStatus', 'summary', 'procedureContent', 'imageStatements'].includes(key) && // Exclude already handled or internal fields
+            !['_internalId', '_definedInInputSourceId', '_inputSourceId', 'key', 'name', 'type', 'structure', 'attributes', 'parsedParameters', 'parameters', 'createdAt', 'updatedAt', 'sourceFile', 'mappingStatus', 'summary', 'procedureContent', 'imageStatements', 'parsedImageFields', 'file_definition_json'].includes(key) && 
             typeof item[key] !== 'object' && item[key] !== null) {
             specificFields[key] = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
         }
@@ -375,13 +454,13 @@ const InventoryPage = () => {
     switch (currentTabConfig.id) {
         case 'm204DbFiles':
             specificFields = {
-                ...specificFields, // Keep dynamically added fields
-                m204Attributes: "M204 Attributes",
-                definedAtLine: "Defined At Line",
+                ...specificFields,
                 targetVsamDatasetName: "Target VSAM Dataset",
                 targetVsamType: "Target VSAM Type",
                 primaryKeyFieldName: "Primary Key Field",
             };
+            delete specificFields.m204Attributes;
+            delete specificFields.definedAtLine;
             break;
         case 'procedures':
             specificFields = {
@@ -390,7 +469,7 @@ const InventoryPage = () => {
                 endLine: "End Line",
                 summary: "Summary",
                 procedureContent: "Procedure Content",
-                targetCobolProgram: "Target COBOL Program",
+                targetCobolFunctionName: "Target COBOL Function", // Updated field
                 lines: "Lines of Code",
                 isRunnableMain: "Is Runnable Main",
             };
@@ -400,44 +479,45 @@ const InventoryPage = () => {
             break;
         case 'variables':
             specificFields = {
-                ...specificFields, // Keep dynamically added fields
                 scope: "Scope",
                 dataType: "Data Type",
                 sourceLine: "Source Line",
-                cobolMappedVariableName: "COBOL Mapped Name", // Added for editing
+                m204Type: "M204 Type",
+                cobolMappedVariableName: "COBOL Mapped Name",
             };
-            if (item.attributes && typeof item.attributes === 'object') {
-                specificFields.attributesDisplay = "Attributes";
-            }
+            if (item.length && item.length !== 'N/A') specificFields.length = "Length";
+            if (item.arrayDimensions && item.arrayDimensions !== 'N/A') specificFields.arrayDimensions = "Array Dimensions";
+            if (item.otherKeywords && item.otherKeywords !== 'N/A') specificFields.otherKeywords = "Other M204 Keywords";
+            if (item.procedureName && item.procedureName !== 'N/A') specificFields.procedureName = "Procedure Name";
             break;
         case 'otherDatasets':
             specificFields = {
-                ...specificFields, // Keep dynamically added fields
-                m204Attributes: "M204 Attributes",
+                ...specificFields,
                 definedAtLine: "Defined At Line",
-                m204LogicalDatasetName: "M204 Logical Dataset Name",
+                m204LogicalDatasetName: "M204 Logical Dataset Name", // Make editable if needed
+                targetVsamDatasetName: "Target VSAM Dataset", 
             };
             if (item && item.imageStatements && item.imageStatements.length > 0) {
                 specificFields.imageStatementsDisplay = "Image Statements";
             }
+            delete specificFields.m204Attributes;
             break;
         default:
-            // Keep specificFields populated by the dynamic loop for unknown tabs
             break;
     }
     return { ...baseDisplayFields, ...specificFields };
-  };
+};
 
-  const renderDetailItem = (label, value, fieldName, item, fieldId, structureIndex) => {
+      const renderDetailItem = (label, value, fieldName, item, fieldId, structureIndex) => {
     if (value === null || value === undefined) value = '';
     const currentItemForEdit = isEditing ? editedItemData : selectedItem;
 
-    // Handle Summary and Procedure Content for Procedures tab
     if (activeTab === 'procedures' && (fieldName === 'summary' || fieldName === 'procedureContent')) {
       const modalTitle = fieldName === 'summary' ? `Summary: ${item?.name}` : `Content: ${item?.name}`;
       const contentValue = (isEditing ? editedItemData : selectedItem)?.[fieldName];
+      const renderSummaryAsMarkdown = fieldName === 'summary';
 
-      if (isEditing) { // In edit mode, show truncated content, not a button
+      if (isEditing) {
         return (
           <div className="grid grid-cols-[160px_1fr] gap-1 items-center py-1.5">
             <div className="text-sm font-medium text-gray-500 truncate" title={label}>{label}:</div>
@@ -449,7 +529,6 @@ const InventoryPage = () => {
         );
       }
 
-      // Display mode for summary/content
       if (!contentValue || contentValue === 'N/A' || String(contentValue).trim() === '') {
         return (
           <div className="grid grid-cols-[160px_1fr] gap-1 items-center py-1.5">
@@ -466,7 +545,7 @@ const InventoryPage = () => {
         <div className="grid grid-cols-[160px_1fr] gap-1 items-center py-1.5">
           <div className="text-sm font-medium text-gray-500 truncate" title={label}>{label}:</div>
           <button
-            onClick={() => openContentModal(modalTitle, String(contentValue))}
+            onClick={() => openContentModal(modalTitle, String(contentValue), renderSummaryAsMarkdown)}
             className="text-sm text-teal-600 hover:text-teal-700 hover:underline font-medium text-left cursor-pointer p-0 bg-transparent border-none"
             title={buttonTitle}
           >
@@ -475,10 +554,9 @@ const InventoryPage = () => {
         </div>
       );
     } else if (activeTab === 'otherDatasets' && fieldName === 'imageStatementsDisplay') {
-        const itemForContent = isEditing ? editedItemData : selectedItem; // Should always be selectedItem as 'otherDatasets' is not editable
+        const itemForContent = selectedItem;
         const imageStatements = itemForContent?.imageStatements;
 
-        // 'otherDatasets' are not editable, so no 'isEditing' branch needed here for input fields
         if (!imageStatements || imageStatements.length === 0) {
             return (
                 <div className="grid grid-cols-[160px_1fr] gap-1 items-center py-1.5">
@@ -488,7 +566,7 @@ const InventoryPage = () => {
             );
         }
 
-        const combinedContent = imageStatements.map(stmt => `\`\`\`\n${stmt.image_content}\n\`\`\``).join("\n\n---\n\n"); // Wrap each statement in a code block
+        const combinedContent = imageStatements.map(stmt => stmt.image_content).join("\n\n---\n\n");
         const modalTitle = `Image Statements: ${item?.name}`;
         const buttonText = "View Image Statements";
         const buttonTitle = "Click to view image statements";
@@ -497,7 +575,7 @@ const InventoryPage = () => {
             <div className="grid grid-cols-[160px_1fr] gap-1 items-center py-1.5">
                 <div className="text-sm font-medium text-gray-500 truncate" title={label}>{label}:</div>
                 <button
-                    onClick={() => openContentModal(modalTitle, combinedContent)}
+                    onClick={() => openContentModal(modalTitle, combinedContent, false)}
                     className="text-sm text-teal-600 hover:text-teal-700 hover:underline font-medium text-left cursor-pointer p-0 bg-transparent border-none"
                     title={buttonTitle}
                 >
@@ -507,32 +585,34 @@ const InventoryPage = () => {
         );
     }
 
-    let isFieldReadOnly = true; // Default to read-only
+    let isFieldReadOnly = true;
 
     if (isEditing && currentItemForEdit && item && currentItemForEdit._internalId === item._internalId) {
-        // Determine if the field is editable based on the active tab and field name
         if (activeTab === 'm204DbFiles') {
-            const editableM204TopLevel = ['targetVsamDatasetName', 'targetVsamType', 'primaryKeyFieldName'];
-            const editableM204Structure = ['fieldName', 'm204Attributes']; // Removed dataType and length
-
-            if (structureIndex === undefined) { // Top-level field of the M204 DB File item
-                if (editableM204TopLevel.includes(fieldName)) {
-                    isFieldReadOnly = false;
-                }
-            } else { // Field within the 'structure' array
-                if (editableM204Structure.includes(fieldName)) {
-                    isFieldReadOnly = false;
-                }
+            const editableM204TopLevel = ['targetVsamDatasetName', 'targetVsamType', 'primaryKeyFieldName', 'name']; // Removed 'm204LogicalDatasetName'
+            const editableM204Structure = ['cobolPictureClause', 'suggestedCobolFieldName']; // Removed 'fieldName' and 'm204Attributes'
+            if (structureIndex === undefined || typeof structureIndex !== 'number') {
+                if (editableM204TopLevel.includes(fieldName)) isFieldReadOnly = false;
+            } else {
+                if (editableM204Structure.includes(fieldName)) isFieldReadOnly = false;
             }
         } else if (activeTab === 'variables') {
-            if (fieldName === 'name' || fieldName === 'cobolMappedVariableName') { // 'name' and 'cobolMappedVariableName' are editable for variables
-                isFieldReadOnly = false;
-            }
+            if (['name', 'cobolMappedVariableName'].includes(fieldName)) isFieldReadOnly = false;
         } else if (activeTab === 'procedures') {
-            if (fieldName === 'targetCobolProgram') { // Only 'targetCobolProgram' is editable for procedures
-                isFieldReadOnly = false;
+            if (fieldName === 'targetCobolFunctionName') isFieldReadOnly = false; // Updated field
+        } else if (activeTab === 'otherDatasets') {
+            const editableOtherTopLevel = ['name', 'm204LogicalDatasetName', 'targetVsamDatasetName'];
+            const editableImageFields = ['suggestedCobolFieldName', 'cobolPictureClause']; // 'fieldName' in image fields is kept read-only for simplicity
+
+            if (typeof structureIndex === 'number') { // Field within 'parsedImageFields'
+                if (editableImageFields.includes(fieldName)) {
+                    isFieldReadOnly = false;
+                }
+            } else { // Top-level field
+                if (editableOtherTopLevel.includes(fieldName)) {
+                    isFieldReadOnly = false;
+                }
             }
-            // 'name' and other fields for procedures remain read-only by default (isFieldReadOnly is true)
         }
     }
 
@@ -541,14 +621,18 @@ const InventoryPage = () => {
       let originalValueForTypeCheck = item[fieldName];
       let currentValueToDisplay = currentItemForEdit[fieldName];
 
-      if (structureIndex !== undefined && item.structure?.[structureIndex] && currentItemForEdit.structure?.[structureIndex]) {
+      if (activeTab === 'm204DbFiles' && structureIndex !== undefined && typeof structureIndex === 'number' && item.structure?.[structureIndex] && currentItemForEdit.structure?.[structureIndex]) {
         originalValueForTypeCheck = item.structure[structureIndex][fieldName];
         currentValueToDisplay = currentItemForEdit.structure[structureIndex][fieldName];
+      } else if (activeTab === 'otherDatasets' && structureIndex !== undefined && typeof structureIndex === 'number' && item.parsedImageFields?.[structureIndex] && currentItemForEdit.parsedImageFields?.[structureIndex]) {
+        originalValueForTypeCheck = item.parsedImageFields[structureIndex][fieldName];
+        currentValueToDisplay = currentItemForEdit.parsedImageFields[structureIndex][fieldName];
       }
+      
 
-      const inputKey = fieldId ? `${fieldId}-${structureIndex !== undefined ? `struct-${structureIndex}-` : ''}${fieldName}` : fieldName;
+      const inputKey = fieldId ? `${fieldId}-${structureIndex !== undefined ? (typeof structureIndex === 'number' ? `struct-${structureIndex}-` : `${structureIndex}-`) : ''}${fieldName}` : fieldName;
 
-      if (fieldName === 'attributesDisplay' && activeTab === 'variables') { // Always read-only display for attributes
+      if (fieldName === 'attributesDisplay' && activeTab === 'variables') {
           const dataToShow = currentItemForEdit.attributes;
           return (
             <div className="grid grid-cols-[160px_1fr] gap-1 items-start py-1">
@@ -556,7 +640,7 @@ const InventoryPage = () => {
               <textarea
                 value={typeof dataToShow === 'object' && dataToShow !== null ? JSON.stringify(dataToShow, null, 2) : String(dataToShow ?? 'N/A')}
                 readOnly
-                className="text-sm text-gray-800 p-1.5 border border-gray-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:border-teal-500 bg-gray-100 h-24" // Always bg-gray-100 for read-only textarea
+                className="text-sm text-gray-800 p-1.5 border border-gray-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:border-teal-500 bg-gray-100 h-24"
               />
             </div>
           );
@@ -573,13 +657,12 @@ const InventoryPage = () => {
             onChange={(e) => handleInputChange(e, fieldId, structureIndex)}
             className={`text-sm text-gray-800 p-1.5 border border-gray-300 rounded-md focus:ring-1 focus:ring-teal-500 focus:border-teal-500 ${isFieldReadOnly ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
             readOnly={isFieldReadOnly}
-            disabled={isFieldReadOnly} // Ensure disabled attribute is also set
+            disabled={isFieldReadOnly}
           />
         </div>
       );
     }
 
-    // Display mode (not editing)
      if (fieldName === 'attributesDisplay' && activeTab === 'variables') {
         const dataToShow = value;
         return (
@@ -591,6 +674,15 @@ const InventoryPage = () => {
             </div>
         );
     }
+    if (fieldName === 'm204Attributes' && activeTab === 'otherDatasets' && typeof value === 'string' && value.length > 60) {
+      return (
+        <div className="grid grid-cols-[160px_1fr] gap-1 items-start py-1">
+          <div className=" font-medium text-gray-500 truncate" title={label}>{label}:</div>
+          <pre className=" text-gray-800 break-words whitespace-pre-wrap bg-gray-100 p-1.5 rounded-md text-xs">{String(value)}</pre>
+        </div>
+      );
+    }
+
 
     return (
       <div className="grid grid-cols-[160px_1fr] gap-1 items-center py-1">
@@ -600,29 +692,53 @@ const InventoryPage = () => {
     );
   };
 
-  const renderStructureField = (field, index, parentItem) => {
-    const fieldKey = `${parentItem._internalId}-field-${index}`;
-    const isParentEditing = isEditing && activeTab === 'm204DbFiles' && editedItemData && editedItemData._internalId === parentItem._internalId;
+const renderStructureField = (field, index, parentItem) => {
+  const fieldKey = `${parentItem._internalId}-field-${index}`;
+  const isParentEditing = isEditing && editedItemData && editedItemData._internalId === parentItem._internalId;
+  const currentFieldData = isParentEditing && editedItemData.structure ? editedItemData.structure[index] : field;
 
-    return (
-      <div key={fieldKey} className="pl-4 mt-2 pt-2 border-t border-gray-200">
-        <p className="text-xs font-semibold text-gray-600 mb-1">
-          Field: {isParentEditing && editedItemData?.structure ? editedItemData.structure[index]?.fieldName : field.fieldName}
-        </p>
-        {renderDetailItem("Field Name", field.fieldName, "fieldName", parentItem, parentItem._internalId, index)}
-        {field.m204Attributes !== undefined && renderDetailItem("M204 Attrs", field.m204Attributes, "m204Attributes", parentItem, parentItem._internalId, index)}
-      </div>
-    );
-  };
+
+  return (
+    <div key={fieldKey} className="pl-4 mt-2 pt-2 border-t border-gray-200">
+      <p className="text-xs font-semibold text-gray-600 mb-1">
+        Field: {currentFieldData?.fieldName || field.fieldName}
+      </p>
+      {renderDetailItem("Field Name", currentFieldData?.fieldName, "fieldName", parentItem, parentItem._internalId, index)}
+      {renderDetailItem("Suggested COBOL Name", currentFieldData?.suggestedCobolFieldName, "suggestedCobolFieldName", parentItem, parentItem._internalId, index)}
+      {currentFieldData?.m204Attributes !== undefined && renderDetailItem("M204 Attrs", currentFieldData.m204Attributes, "m204Attributes", parentItem, parentItem._internalId, index)}
+      {currentFieldData?.length !== undefined && renderDetailItem("VSAM Length", currentFieldData.length, "length", parentItem, parentItem._internalId, index)}
+      {currentFieldData?.keyOrder !== undefined && currentFieldData.keyOrder !== 'N/A' && renderDetailItem("Key Order", currentFieldData.keyOrder, "keyOrder", parentItem, parentItem._internalId, index)}
+      {currentFieldData?.cobolPictureClause !== undefined && renderDetailItem("COBOL Picture", currentFieldData.cobolPictureClause, "cobolPictureClause", parentItem, parentItem._internalId, index)}
+    </div>
+  );
+};
+
+const renderImageDefinitionField = (field, index, parentItem) => {
+  const fieldKey = `${parentItem._internalId}-imgfield-${index}-${field.fieldName}`;
+  const isParentEditing = isEditing && editedItemData && editedItemData._internalId === parentItem._internalId;
+  const currentFieldData = isParentEditing && editedItemData.parsedImageFields ? editedItemData.parsedImageFields[index] : field;
+
+  return (
+    <div key={fieldKey} className="pl-4 mt-2 pt-2 border-t border-gray-200">
+      <p className="text-xs font-semibold text-gray-600 mb-1">
+        Field: {currentFieldData?.fieldName || field.fieldName}
+      </p>
+      {renderDetailItem("Field Name", currentFieldData?.fieldName, "fieldName", parentItem, parentItem._internalId, index)}
+      {renderDetailItem("Suggested COBOL Name", currentFieldData?.suggestedCobolFieldName, "suggestedCobolFieldName", parentItem, parentItem._internalId, index)}
+      {renderDetailItem("Data Type", currentFieldData?.dataType, "dataType", parentItem, parentItem._internalId, index)}
+      {renderDetailItem("Length/Size", currentFieldData?.length, "length", parentItem, parentItem._internalId, index)}
+      {currentFieldData?.digits !== 'N/A' && currentFieldData?.digits !== undefined && renderDetailItem("Digits", currentFieldData.digits, "digits", parentItem, parentItem._internalId, index)}
+      {currentFieldData?.decimalPlaces !== 'N/A' && currentFieldData?.decimalPlaces !== undefined && renderDetailItem("Decimal Places", currentFieldData.decimalPlaces, "decimalPlaces", parentItem, parentItem._internalId, index)}
+      {renderDetailItem("COBOL Picture", currentFieldData?.cobolPictureClause, "cobolPictureClause", parentItem, parentItem._internalId, index)}
+    </div>
+  );
+};
+
 
   const handleGenerateRequirements = async () => {
-    // Navigate immediately to requirements page
     navigate(`/project/${projectId}/requirements`);
-    
     try {
-      const requestBody = {};
-      // Fire and forget - let the requirements page handle the loading
-      apiClient.post(`/requirements/projects/${projectId}/generate-document`, requestBody);
+      apiClient.post(`/requirements/projects/${projectId}/generate-document`, {});
     } catch (err) {
       console.error("Failed to initiate requirements generation:", err);
     }
@@ -631,7 +747,6 @@ const InventoryPage = () => {
   return (
     <div className="bg-white flex flex-col h-full">
       <div className="flex-grow flex flex-col border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-        {/* Search and Generate Requirements Bar */}
         <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
           <div className="relative flex-grow">
             <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -656,7 +771,6 @@ const InventoryPage = () => {
             <ChevronRight size={20} className="ml-2" />
           </button>
         </div>
-        {/* Tabs Navigation */}
         <div className="border-b border-gray-200 bg-white">
           <nav className="-mb-px flex space-x-0 overflow-x-auto" aria-label="Tabs">
             {tabsConfig.map((tab) => {
@@ -687,9 +801,7 @@ const InventoryPage = () => {
           </nav>
         </div>
 
-        {/* Main Content Area (List and Details) */}
         <div className="grid md:grid-cols-[minmax(320px,_1fr)_420px] flex-grow overflow-hidden">
-          {/* List Pane */}
           <div className="overflow-y-auto border-r border-gray-200 p-2 bg-white">
             {loadingStates[activeTab] && (
               <div className="p-6 text-center text-gray-500 flex items-center justify-center">
@@ -714,7 +826,7 @@ const InventoryPage = () => {
                     }}
                     className={`w-full flex items-center text-left px-3 py-3 text-sm rounded-md
                                 ${selectedItem?._internalId === item._internalId && !isEditing ? 'bg-teal-100 text-teal-700 font-medium' : ''}
-                                ${selectedItem?._internalId === item._internalId && isEditing && (activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures') ? 'bg-orange-100 text-orange-700 font-medium' : ''}
+                                ${selectedItem?._internalId === item._internalId && isEditing && (activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures' || activeTab === 'otherDatasets') ? 'bg-orange-100 text-orange-700 font-medium' : ''}
                                 ${!(selectedItem?._internalId === item._internalId) ? 'hover:bg-gray-100 text-gray-700' : ''}
                                 transition-colors duration-150`}
                   >
@@ -741,11 +853,10 @@ const InventoryPage = () => {
             )}
           </div>
 
-          {/* Details Pane */}
           <div className="overflow-y-auto p-5 bg-gray-50/70">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-semibold text-base text-gray-700">Item Details</h3>
-              {selectedItem && !isEditing && (activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures') && (
+              {selectedItem && !isEditing && (activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures' || activeTab === 'otherDatasets') && (
                 <button
                   onClick={handleEdit}
                   className="flex items-center gap-1.5 text-xs bg-blue-500 hover:bg-blue-600 text-white py-1.5 px-3 rounded-md transition-colors"
@@ -760,30 +871,26 @@ const InventoryPage = () => {
                     const itemToDisplay = isEditing ? editedItemData : selectedItem;
                     if (Object.prototype.hasOwnProperty.call(itemToDisplay, key) ||
                         (key === 'attributesDisplay' && activeTab === 'variables' && Object.prototype.hasOwnProperty.call(itemToDisplay, 'attributes')) ||
-                        (key === 'imageStatementsDisplay' && activeTab === 'otherDatasets' && Object.prototype.hasOwnProperty.call(itemToDisplay, 'imageStatements'))) {
+                        (key === 'imageStatementsDisplay' && activeTab === 'otherDatasets' && Object.prototype.hasOwnProperty.call(itemToDisplay, 'imageStatements') && itemToDisplay.imageStatements.length > 0 )) {
 
                         let valueToRender;
-                        let fieldNameToUse = key;
+                        // fieldNameToUse was removed as it was unused
 
                         if (key === 'attributesDisplay') {
                             valueToRender = itemToDisplay.attributes;
-                            fieldNameToUse = 'attributesDisplay';
                         } else if (key === 'imageStatementsDisplay' && activeTab === 'otherDatasets') {
-                            valueToRender = itemToDisplay.imageStatements; // Pass the array
-                            fieldNameToUse = 'imageStatementsDisplay';
+                            valueToRender = itemToDisplay.imageStatements;
                         }
                         else {
                             valueToRender = itemToDisplay[key];
                         }
-                        return renderDetailItem(label, valueToRender, fieldNameToUse, selectedItem, selectedItem._internalId);
+                        return <div key={`${itemToDisplay._internalId || itemToDisplay.name}-${key}`}>{renderDetailItem(label, valueToRender, key, selectedItem, selectedItem._internalId || selectedItem.name)}</div>;
                     }
                     return null;
                 })}
 
                 {activeTab === 'procedures' &&
-                 (isEditing ? editedItemData : selectedItem)?.parsedParameters &&
-                 (isEditing ? editedItemData : selectedItem).parsedParameters.parameters &&
-                 (isEditing ? editedItemData : selectedItem).parsedParameters.parameters.length > 0 && (
+                 (isEditing ? editedItemData : selectedItem)?.parsedParameters?.parameters?.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-gray-300">
                     <h4 className="text-sm font-semibold text-gray-600 mb-2">Parsed Parameters:</h4>
                     <div className="space-y-1.5">
@@ -812,7 +919,22 @@ const InventoryPage = () => {
                      <p className="text-xs text-gray-500 mt-2">No detailed field structure available for this M204 DB file.</p>
                  )}
 
-                {isEditing && (activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures') && (
+                {activeTab === 'otherDatasets' && selectedItem.parsedImageFields && selectedItem.parsedImageFields.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-300">
+                    <h4 className="text-sm font-semibold text-gray-600 mb-2">Image Fields:</h4>
+                    {(isEditing && editedItemData?.parsedImageFields ? editedItemData.parsedImageFields : selectedItem.parsedImageFields).map((field, index) => (
+                      renderImageDefinitionField(field, index, selectedItem)
+                    ))}
+                     {isEditing && (
+                        <p className="text-xs text-gray-500 mt-2">Image field editing is enabled.</p>
+                    )}
+                  </div>
+                )}
+                {activeTab === 'otherDatasets' && (!selectedItem.parsedImageFields || selectedItem.parsedImageFields.length === 0) && (
+                  <p className="text-xs text-gray-500 mt-2">No parsed image fields available for this file.</p>
+                )}
+
+                {isEditing && (activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures' || activeTab === 'otherDatasets') && (
                   <div className="pt-4 mt-4 border-t border-gray-200 flex gap-3">
                     <button
                       onClick={handleSave}
@@ -840,6 +962,7 @@ const InventoryPage = () => {
         onClose={closeContentModal}
         title={modalContent.title}
         content={modalContent.content}
+        renderAsMarkdown={modalContent.renderAsMarkdown}
       />
     </div>
   );

@@ -1,12 +1,168 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { FileText, ChevronRight, ChevronDown, Menu, X, ChevronLeft, Download, AlertTriangle, Loader2 } from 'lucide-react';
+import { FileText, ChevronRight, ChevronDown, Menu, X, ChevronLeft, Download, AlertTriangle, Loader2, Maximize2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import remarkGfm from "remark-gfm";
 import rehypeSlug from 'rehype-slug';
 import GithubSlugger from 'github-slugger';
+import mermaid from 'mermaid';
 import apiClient from '../config/axiosConfig';
+
+// Initialize Mermaid
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'default',
+  securityLevel: 'loose',
+});
+
+// Modal component for Mermaid diagram popup
+const MermaidModal = ({ isOpen, onClose, svgContent }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Blurred background overlay */}
+      <div 
+        className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm"
+        onClick={onClose}
+      ></div>
+      
+      {/* Modal content */}
+      <div className="relative bg-white rounded-lg shadow-xl max-w-6xl max-h-[90vh] overflow-auto p-6 m-4">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 z-10"
+        >
+          <X size={24} />
+        </button>
+        
+        <div className="mt-8">
+          <div dangerouslySetInnerHTML={{ __html: svgContent }} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Mermaid component
+const MermaidDiagram = ({ children }) => {
+  const [svgContent, setSvgContent] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  // Fix: Generate diagramId only once using useMemo or useState
+  const [diagramId] = useState(() => `mermaid-${Math.random().toString(36).substr(2, 9)}`);
+
+  useEffect(() => {
+    // Ensure component is mounted
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const renderDiagram = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        // Small delay to ensure DOM is ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        const diagramCode = children.toString();
+        const { svg } = await mermaid.render(diagramId, diagramCode);
+        setSvgContent(svg);
+      } catch (err) {
+        console.error('Mermaid rendering error:', err);
+        setError('Failed to render diagram');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    renderDiagram();
+  }, [children, diagramId, isMounted]);
+
+  const handleClick = () => {
+    if (!svgContent && !isLoading) {
+      // If diagram failed to load, try re-rendering on click
+      setIsLoading(true);
+      const renderDiagram = async () => {
+        try {
+          const diagramCode = children.toString();
+          const { svg } = await mermaid.render(diagramId + '-retry', diagramCode);
+          setSvgContent(svg);
+        } catch (err) {
+          console.error('Mermaid retry rendering error:', err);
+          setError('Failed to render diagram');
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      renderDiagram();
+    } else if (svgContent) {
+      setModalOpen(true);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8 bg-gray-50 rounded-lg mb-4">
+        <Loader2 className="animate-spin h-6 w-6 text-gray-500 mr-2" />
+        <span className="text-gray-600">Rendering diagram...</span>
+      </div>
+    );
+  }
+
+  if (error || !svgContent) {
+    return (
+      <div 
+        className="p-4 bg-red-50 border border-red-200 rounded-lg mb-4 cursor-pointer hover:bg-red-100"
+        onClick={handleClick}
+      >
+        <div className="flex items-center text-red-700">
+          <AlertTriangle size={16} className="mr-2" />
+          <span className="font-medium">Diagram Error - Click to retry</span>
+        </div>
+        <p className="text-red-600 text-sm mt-1">{error || 'Failed to render diagram'}</p>
+        <pre className="mt-2 text-xs text-gray-600 bg-white p-2 rounded border overflow-auto">
+          {children}
+        </pre>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="relative group mb-6">
+        <div 
+          className="cursor-pointer border border-gray-200 rounded-lg p-4 bg-white hover:shadow-md transition-shadow relative"
+          onClick={handleClick}
+        >
+          {/* Expand icon overlay */}
+          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-white shadow-md rounded-full p-1 border">
+            <Maximize2 size={16} className="text-gray-600" />
+          </div>
+          
+          <div dangerouslySetInnerHTML={{ __html: svgContent }} />
+        </div>
+        
+        {/* Hover hint */}
+        <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-xs bg-gray-800 text-white px-2 py-1 rounded whitespace-nowrap">
+          Click to expand
+        </div>
+      </div>
+
+      <MermaidModal 
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        svgContent={svgContent}
+      />
+    </>
+  );
+};
 
 const markdownComponents = {
     h1: (props) => <h1 className="text-3xl font-bold mb-6 scroll-mt-20" {...props} />,
@@ -18,8 +174,29 @@ const markdownComponents = {
     ul: (props) => <ul className="list-disc ml-6 mb-4" {...props} />,
     ol: (props) => <ol className="list-decimal ml-6 mb-4" {...props} />,
     blockquote: (props) => <blockquote className="border-l-4 border-gray-300 pl-4 italic my-4" {...props} />,
-    code: (props) => <code className="bg-gray-100 p-1 rounded text-sm" {...props} />,
-    pre: (props) => <pre className="bg-gray-100 p-4 rounded mb-4 overflow-auto text-sm" {...props} />,
+    code: (props) => {
+      const { children, className } = props;
+      const match = /language-(\w+)/.exec(className || '');
+      const language = match ? match[1] : '';
+      
+      // Check if it's a mermaid diagram
+      if (language === 'mermaid') {
+        return <MermaidDiagram>{children}</MermaidDiagram>;
+      }
+      
+      // Regular inline code
+      return <code className="bg-gray-100 p-1 rounded text-sm" {...props} />;
+    },
+    pre: (props) => {
+      const { children } = props;
+      
+      // Check if the pre contains a mermaid code block
+      if (children?.props?.className?.includes('language-mermaid')) {
+        return <MermaidDiagram>{children.props.children}</MermaidDiagram>;
+      }
+      
+      return <pre className="bg-gray-100 p-4 rounded mb-4 overflow-auto text-sm" {...props} />;
+    },
     table: (props) => (
       <div className="overflow-x-auto mb-6 shadow-sm border border-gray-200 rounded-lg">
         <table className="min-w-full divide-y divide-gray-200" {...props} />

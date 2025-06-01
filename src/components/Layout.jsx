@@ -24,7 +24,7 @@ const Layout = () => {
         position="bottom-right"
         richColors={true}
         closeButton={true}
-        duration={4000}
+        duration={1000}
         expand={true}
         visibleToasts={4}
       />

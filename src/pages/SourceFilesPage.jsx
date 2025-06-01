@@ -4,7 +4,7 @@ import {
   AlertTriangle, CheckCircle, Search, Filter, Loader2, X
 } from 'lucide-react';
 import { useParams, Link } from 'react-router-dom';
-import { toast } from 'sonner'; // Only import toast, not Toaster
+import { toast } from 'sonner';
 import apiClient from '../config/axiosConfig';
 
 // Confirmation Modal Component
@@ -55,11 +55,148 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
   );
 };
 
+const SOURCE_TYPE_OPTIONS = [
+  { value: '', label: 'Select type...' },
+  { value: 'm204', label: 'M204' },
+  { value: 'parmlib', label: 'PARMLIB' },
+  { value: 'jcl', label: 'JCL' },
+  { value: 'other', label: 'Other' },
+];
+
+// Upload Files Modal Component
+const UploadFilesModal = ({ isOpen, onClose, onUploadConfirm }) => {
+  const [selectedFiles, setSelectedFiles] = useState([]); // Array of { file: File, type: string, id: string }
+  const fileInputRefModal = useRef(null);
+
+  if (!isOpen) return null;
+
+  const handleModalFileChange = (event) => {
+    if (event.target.files && event.target.files.length > 0) {
+      const newFiles = Array.from(event.target.files).map(file => ({
+        file,
+        type: '', // Default type, user needs to select
+        id: `${file.name}-${Date.now()}-${Math.random().toString(36).substring(7)}` // Unique ID for list rendering
+      }));
+      setSelectedFiles(prev => [...prev, ...newFiles]);
+      event.target.value = ''; // Reset file input
+    }
+  };
+
+  const handleTypeChange = (fileId, newType) => {
+    setSelectedFiles(prev => prev.map(f => f.id === fileId ? { ...f, type: newType } : f));
+  };
+
+  const handleRemoveFile = (fileId) => {
+    setSelectedFiles(prev => prev.filter(f => f.id !== fileId));
+  };
+
+  const handleUpload = () => {
+    const filesToUpload = selectedFiles.filter(f => f.type);
+    if (filesToUpload.length !== selectedFiles.length) {
+        toast.error("Please specify a type for all selected files.");
+        return;
+    }
+    if (filesToUpload.length === 0 && selectedFiles.length > 0) {
+        toast.error("Please select a type for your file(s).");
+        return;
+    }
+    if (filesToUpload.length === 0) {
+        toast.error("No files selected or types specified for upload.");
+        return;
+    }
+    onUploadConfirm(filesToUpload.map(f => ({ file: f.file, type: f.type })));
+    onClose(); 
+    setSelectedFiles([]); 
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-[100] backdrop-blur-sm">
+      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full transform transition-all max-h-[90vh] flex flex-col">
+        <div className="flex justify-between items-center p-5 border-b border-gray-200">
+          <h3 className="text-xl font-semibold text-gray-800">Upload Source Files</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-100 rounded-full" aria-label="Close modal">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto flex-grow">
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={() => fileInputRefModal.current?.click()}
+              className="w-full flex items-center justify-center gap-2 bg-teal-50 hover:bg-teal-100 text-teal-700 font-medium py-3 px-4 rounded-lg border-2 border-dashed border-teal-300 hover:border-teal-400 transition-colors"
+            >
+              <Upload size={20} />
+              <span>Click to select files</span>
+            </button>
+            <input ref={fileInputRefModal} type="file" multiple onChange={handleModalFileChange} className="hidden" accept="*" id="modalFileUploadInput" />
+          </div>
+
+          {selectedFiles.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="text-md font-semibold text-gray-700 mb-2">Files to Upload ({selectedFiles.length}):</h4>
+              {selectedFiles.map(item => (
+                <div key={item.id} className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 p-3 bg-gray-50 rounded-md border border-gray-200">
+                  <div className="flex items-center gap-2 flex-grow min-w-0">
+                    <FileText size={18} className="text-gray-500 flex-shrink-0" />
+                    <div className="flex-grow min-w-0">
+                        <p className="truncate text-sm font-medium text-gray-800" title={item.file.name}>
+                        {item.file.name}
+                        </p>
+                        <p className="text-xs text-gray-500">{ (item.file.size / 1024).toFixed(2) } KB</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <select
+                        value={item.type}
+                        onChange={(e) => handleTypeChange(item.id, e.target.value)}
+                        className="p-2 border border-gray-300 rounded-md text-sm focus:ring-teal-500 focus:border-teal-500 w-full sm:w-auto"
+                    >
+                        {SOURCE_TYPE_OPTIONS.map(opt => (
+                        <option key={opt.value} value={opt.value} disabled={opt.value === ''}>
+                            {opt.label}
+                        </option>
+                        ))}
+                    </select>
+                    <button onClick={() => handleRemoveFile(item.id)} className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full flex-shrink-0" title="Remove file">
+                        <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {selectedFiles.length === 0 && (
+             <p className="text-sm text-gray-500 text-center py-4">No files selected yet. Click above to add files.</p>
+          )}
+        </div>
+        <div className="bg-gray-50 px-6 py-4 sm:flex sm:flex-row-reverse rounded-b-xl border-t">
+          <button
+            type="button"
+            className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-teal-600 text-base font-medium text-white hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+            onClick={handleUpload}
+            disabled={selectedFiles.length === 0 || selectedFiles.some(f => !f.type)}
+          >
+            Upload Selected
+          </button>
+          <button
+            type="button"
+            className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm"
+            onClick={() => { onClose(); setSelectedFiles([]); }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 const SourceFilesPage = () => {
   const { projectId } = useParams();
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const fileInputRef = useRef(null);
+  // fileInputRef is removed as it's now in the modal
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [fileToView, setFileToView] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -69,6 +206,9 @@ const SourceFilesPage = () => {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [confirmModalProps, setConfirmModalProps] = useState({});
   const [isProcessingAction, setIsProcessingAction] = useState(false);
+
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+
 
   const openConfirmationModal = ({ title, message, onConfirm, confirmText = "Confirm" }) => {
     setConfirmModalProps({ title, message, onConfirm, confirmText });
@@ -108,7 +248,7 @@ const SourceFilesPage = () => {
       size: backendFile.size || 0,
       uploadDate: backendFile.created_at || new Date().toISOString(),
       analysisStatus: frontendStatus,
-      sourceType: backendFile.source_type,
+      sourceType: backendFile.source_type, // Ensure this is provided by backend
     };
   };
 
@@ -175,73 +315,147 @@ const SourceFilesPage = () => {
     }
   };
 
-  const handleFileChange = async (event) => {
-    if (event.target.files && event.target.files.length > 0) {
-      const filesToUpload = Array.from(event.target.files);
-      event.target.value = ''; 
+  const handleActualFileUploads = async (filesWithTypes) => {
+    if (!filesWithTypes || filesWithTypes.length === 0) {
+      return;
+    }
 
-      const uploadPromises = filesToUpload.map(async (file) => {
-        const tempId = `${file.name}-${Date.now()}`;
-        setUploadProgress(prev => ({ ...prev, [tempId]: { progress: 0, name: file.name, error: null, isLoading: true, success: false } }));
+    const formData = new FormData();
+    filesWithTypes.forEach(item => {
+      formData.append('files', item.file);
+      formData.append('source_types', item.type);
+    });
 
-        const formData = new FormData();
-        formData.append('files', file); 
+    const tempUploadItems = filesWithTypes.map(item => ({
+        id: `${item.file.name}-${item.type}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        name: item.file.name,
+        type: item.type,
+        progress: 0,
+        isLoading: true,
+        error: null,
+        success: false,
+    }));
 
-        try {
-          const response = await apiClient.post(`/files/${projectId}/upload_source_files/`, formData, {
-            onUploadProgress: (progressEvent) => {
-              const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-              setUploadProgress(prev => ({ ...prev, [tempId]: { ...prev[tempId], progress: percentCompleted } }));
-            },
+    tempUploadItems.forEach(item => {
+        setUploadProgress(prev => ({ ...prev, [item.id]: { progress: 0, name: item.name, error: null, isLoading: true, success: false } }));
+    });
+
+    try {
+      tempUploadItems.forEach(item => { // Simulate initial small progress
+        setUploadProgress(prev => ({ ...prev, [item.id]: { ...prev[item.id], progress: 5 } }));
+      });
+
+      const response = await apiClient.post(`/files/${projectId}/upload_source_files/`, formData, {
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          tempUploadItems.forEach(item => {
+            setUploadProgress(prev => {
+              if (!prev[item.id]) return prev; // Guard against item being removed
+              return { ...prev, [item.id]: { ...prev[item.id], progress: percentCompleted } };
+            });
           });
-          
-          if (response.data && response.data.data && response.data.data.length > 0) {
-            const newFile = mapBackendFileToFrontend(response.data.data[0]);
-            setUploadedFiles(prevFiles => [...prevFiles, newFile]);
-            setUploadProgress(prev => ({ 
-              ...prev, 
-              [tempId]: { ...prev[tempId], isLoading: false, success: true, progress: 100 } 
-            }));
-            toast.success(`File "${file.name}" uploaded successfully!`);
-            setTimeout(() => {
-              setUploadProgress(prev => {
-                  const newProgress = { ...prev };
-                  delete newProgress[tempId];
-                  return newProgress;
-              });
-            }, 300); 
-          } else {
-            throw new Error(response.data?.message || "Upload successful but no file data returned.");
-          }
-        } catch (err) {
-          console.error(`Failed to upload ${file.name}:`, err);
-          let errorMessage = `Failed to upload ${file.name}`;
-          if (err.response && err.response.data) {
-            if (err.response.data.detail && Array.isArray(err.response.data.detail)) {
-              errorMessage = err.response.data.detail.map(d => `${d.loc.join(' -> ')}: ${d.msg}`).join('; ');
-            } else if (err.response.data.detail) {
-               errorMessage = err.response.data.detail;
-            } else if (err.response.data.message) {
-               errorMessage = err.response.data.message;
-            }
-          } else if (err.message) {
-            errorMessage = err.message;
-          }
-          setUploadProgress(prev => ({
-            ...prev,
-            [tempId]: { ...prev[tempId], error: errorMessage, isLoading: false, progress: 0, success: false }
-          }));
-          toast.error(errorMessage);
-           setTimeout(() => {
+        },
+      });
+      
+      const backendUploadedFiles = response.data?.data || [];
+      const backendMessage = response.data?.message || "";
+      const overallStatus = response.status;
+
+      const newFrontendFiles = backendUploadedFiles.map(mapBackendFileToFrontend);
+      if (newFrontendFiles.length > 0) {
+        setUploadedFiles(prevFiles => [...prevFiles, ...newFrontendFiles]);
+      }
+      
+      let successfulUploadCount = 0;
+
+      tempUploadItems.forEach(tempItem => {
+        const correspondingBackendFile = backendUploadedFiles.find(bf => bf.original_filename === tempItem.name && bf.source_type === tempItem.type);
+        
+        if (correspondingBackendFile) {
+          successfulUploadCount++;
+          setUploadProgress(prev => {
+            if (!prev[tempItem.id]) return prev;
+            return { ...prev, [tempItem.id]: { ...prev[tempItem.id], isLoading: false, success: true, progress: 100 }};
+          });
+          toast.success(`File "${tempItem.name}" (${tempItem.type}) uploaded successfully!`);
+          setTimeout(() => {
             setUploadProgress(prev => {
                 const newProgress = { ...prev };
-                delete newProgress[tempId];
+                delete newProgress[tempItem.id];
                 return newProgress;
             });
-           }, 5000); 
+          }, 1000);
+        } else {
+          // File was in the request but not in the successful response data
+          // Check backendMessage for specific errors
+          let specificError = `Failed to process "${tempItem.name}" (${tempItem.type}).`;
+          if (backendMessage) {
+            // Basic check if the message contains the filename
+            const fileErrorRegex = new RegExp(`File '${tempItem.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'[^:]*: (.*?)(?:;|$)`, 'i');
+            const match = backendMessage.match(fileErrorRegex);
+            if (match && match[1]) {
+              specificError = `"${tempItem.name}": ${match[1].trim()}`;
+            } else if (backendMessage.toLowerCase().includes(tempItem.name.toLowerCase()) && backendMessage.toLowerCase().includes("error")) {
+                specificError = `Error with "${tempItem.name}": Server reported an issue. Check details: ${backendMessage}`;
+            }
+          }
+
+          setUploadProgress(prev => {
+            if (!prev[tempItem.id]) return prev;
+            return { ...prev, [tempItem.id]: { ...prev[tempItem.id], error: specificError, isLoading: false, progress: prev[tempItem.id]?.progress || 0, success: false }};
+          });
+          toast.error(specificError);
+          setTimeout(() => {
+            setUploadProgress(prev => {
+                const newProgress = { ...prev };
+                delete newProgress[tempItem.id];
+                return newProgress;
+            });
+           }, 7000);
         }
       });
-      await Promise.all(uploadPromises);
+
+      if (backendMessage && (overallStatus >= 400 || (backendMessage.toLowerCase().includes("fail") && successfulUploadCount < tempUploadItems.length))) {
+        if (successfulUploadCount < tempUploadItems.length && successfulUploadCount > 0) {
+            toast.warning(`Partial success: ${backendMessage}`);
+        } else if (successfulUploadCount === 0) {
+            // This case should be caught by the main catch block if status is >= 400
+            // but if status is 200 and message indicates all failed, this is a fallback.
+            // toast.error(`Upload failed: ${backendMessage}`);
+        }
+      }
+
+    } catch (err) {
+      console.error(`Failed to upload batch of files:`, err);
+      let errorMessage = "An error occurred during file upload.";
+      if (err.response && err.response.data) {
+        if (err.response.data.detail && Array.isArray(err.response.data.detail)) {
+          errorMessage = err.response.data.detail.map(d => `${d.loc?.join(' -> ') || 'Field'}: ${d.msg}`).join('; ');
+        } else if (err.response.data.detail) {
+           errorMessage = err.response.data.detail;
+        } else if (err.response.data.message) {
+           errorMessage = err.response.data.message;
+        }
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      tempUploadItems.forEach(item => {
+        setUploadProgress(prev => {
+          if (!prev[item.id]) return prev;
+          return { ...prev, [item.id]: { ...prev[item.id], error: errorMessage, isLoading: false, progress: 0, success: false }};
+        });
+      });
+      toast.error(`Upload failed: ${errorMessage}`);
+       setTimeout(() => {
+        tempUploadItems.forEach(item => {
+            setUploadProgress(prev => {
+                const newProgress = { ...prev };
+                delete newProgress[item.id];
+                return newProgress;
+            });
+        });
+       }, 7000);
     }
   };
 
@@ -264,6 +478,7 @@ const SourceFilesPage = () => {
   };
 
   const handleViewFile = async (file) => {
+    // ... existing handleViewFile logic ...
     if (file.originalFile && typeof FileReader !== "undefined") {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -314,25 +529,21 @@ const SourceFilesPage = () => {
   };
 
   const handleAnalyzeAllFiles = async () => {
+    // ... existing handleAnalyzeAllFiles logic ...
     if (uploadedFiles.length === 0 || !projectId) return;
     
     setUploadedFiles(prevFiles => prevFiles.map(f => ({ ...f, analysisStatus: 'analyzing' })));
-    toast.success("Analysis started for all files. Statuses will update shortly.");
+    toast.info("Analysis started for all files. Statuses will update shortly."); // Changed to info
     
     try {
-      // Send a single request to the new endpoint
       await apiClient.post(`/analysis/project/${projectId}/analyze-ordered`);
-      // Optionally, you might want to inform the user that the request was sent successfully
-      // The backend will now handle analyzing all files for the project.
-      // We still need to refresh the file list after some time to get updated statuses.
+      toast.success("Analysis request for all files sent successfully. Backend is processing.");
     } catch (err) {
       console.error(`Failed to start analysis for project ${projectId}:`, err);
       toast.error(err.response?.data?.detail || "Failed to start analysis for the project.");
-      // Revert status for all files if the overall request fails, or handle more granularly if needed
-      setUploadedFiles(prevFiles => prevFiles.map(f => ({ ...f, analysisStatus: 'error' }))); // Or revert to original status
+      fetchSourceFiles(); // Re-fetch to get actual current statuses
     } finally {
-      // Refresh files after a delay to allow backend processing
-      const baseDelay = 5000; // Increased base delay as it's a project-wide operation
+      const baseDelay = 5000; 
       const perFileDelay = 500; 
       const totalDelay = baseDelay + (uploadedFiles.length * perFileDelay);
       setTimeout(() => fetchSourceFiles(), totalDelay);
@@ -340,17 +551,18 @@ const SourceFilesPage = () => {
   };
 
   const handleRemoveAllFiles = () => {
+    // ... existing handleRemoveAllFiles logic ...
     if (uploadedFiles.length === 0) return;
     openConfirmationModal({
       title: "Delete All Files Permanently",
       message: `Are you sure you want to delete all ${uploadedFiles.length} files from the server? This action cannot be undone.`,
       confirmText: "Delete All Permanently",
       onConfirm: async () => {
-        const filesToDelete = [...uploadedFiles]; // Copy current files
+        const filesToDelete = [...uploadedFiles]; 
         const deletePromises = filesToDelete.map(file =>
           apiClient.delete(`/files/source_files/${file.id}`)
-            .then(() => ({ id: file.id, status: 'fulfilled' }))
-            .catch(err => ({ id: file.id, status: 'rejected', error: err.response?.data?.detail || `Failed to delete ${file.name}` }))
+            .then(() => ({ id: file.id, name: file.name, status: 'fulfilled' }))
+            .catch(err => ({ id: file.id, name: file.name, status: 'rejected', error: err.response?.data?.detail || `Failed to delete ${file.name}` }))
         );
 
         const results = await Promise.allSettled(deletePromises);
@@ -362,10 +574,9 @@ const SourceFilesPage = () => {
           if (result.status === 'fulfilled' && result.value.status === 'fulfilled') {
             successfullyDeletedIds.push(result.value.id);
           } else if (result.status === 'fulfilled' && result.value.status === 'rejected') {
-            failedDeletions.push(result.value.error);
+            failedDeletions.push({name: result.value.name, error: result.value.error});
           } else if (result.status === 'rejected') {
-            // This case should ideally not happen if the inner promise catches its error
-            failedDeletions.push(`An unexpected error occurred for one of the files.`);
+            failedDeletions.push({name: "Unknown file", error: `An unexpected error occurred during deletion.`});
             console.error("Unexpected rejection in Promise.allSettled for delete:", result.reason);
           }
         });
@@ -375,12 +586,14 @@ const SourceFilesPage = () => {
 
         if (failedDeletions.length === 0 && successfullyDeletedIds.length === filesToDelete.length) {
           toast.success("All files deleted successfully.");
-        } else if (successfullyDeletedIds.length > 0) {
-          toast.error(`${successfullyDeletedIds.length} files deleted. ${failedDeletions.length} files failed to delete.`);
-          failedDeletions.forEach(errMsg => console.error("Deletion error:", errMsg));
         } else {
-          toast.error("Failed to delete files. Please check console for details.");
-          failedDeletions.forEach(errMsg => console.error("Deletion error:", errMsg));
+          if (successfullyDeletedIds.length > 0) {
+            toast.success(`${successfullyDeletedIds.length} file(s) deleted successfully.`);
+          }
+          failedDeletions.forEach(fail => {
+            toast.error(`Failed to delete "${fail.name}": ${fail.error}`);
+            console.error(`Deletion error for ${fail.name}:`, fail.error);
+          });
         }
       }
     });
@@ -431,9 +644,9 @@ const SourceFilesPage = () => {
           </div>
           <div className="flex gap-3 items-center">
             <button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => setIsUploadModalOpen(true)}
               className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-medium py-2 px-4 rounded-lg shadow-sm transition-colors"
-              disabled={isLoading || isProcessingAction}
+              disabled={isLoading || Object.keys(uploadProgress).length > 0 || isProcessingAction}
             > <Upload size={20} /> <span>Upload Files</span> </button>
             <Link
               to={`/project/${projectId}`}
@@ -442,26 +655,26 @@ const SourceFilesPage = () => {
           </div>
         </div>
 
-        <input ref={fileInputRef} type="file" multiple onChange={handleFileChange} className="hidden" id="fileUploadInput" accept="*" />
+        {/* Hidden file input removed from here, it's in the modal now */}
 
         {Object.keys(uploadProgress).length > 0 && (
           <div className="mb-6 p-4 bg-white rounded-lg shadow border border-gray-200">
-            <h3 className="text-md font-semibold text-gray-700 mb-3">Uploads</h3>
+            <h3 className="text-md font-semibold text-gray-700 mb-3">Uploads In Progress</h3>
             {Object.entries(uploadProgress).map(([tempId, item]) => (
               <div key={tempId} className="mb-2 p-3 bg-gray-50 rounded-md">
                 <div className="flex justify-between items-center text-sm">
                   <span className="truncate font-medium text-gray-800" title={item.name}>{item.name}</span>
-                  {item.isLoading && !item.success && <Loader2 className="h-4 w-4 animate-spin text-teal-500" />}
+                  {item.isLoading && !item.success && !item.error && <Loader2 className="h-4 w-4 animate-spin text-teal-500" />}
                   {item.error && <AlertTriangle size={16} className="text-red-500" title={item.error} />}
                   {item.success && <CheckCircle size={16} className="text-emerald-500" />}
                 </div>
-                {item.isLoading && !item.error && !item.success && (
+                {(item.isLoading || item.progress < 100) && !item.error && !item.success && (
                   <div className="mt-1 w-full bg-gray-200 rounded-full h-1.5">
                     <div className="bg-teal-500 h-1.5 rounded-full" style={{ width: `${item.progress}%` }}></div>
                   </div>
                 )}
                 {item.success && (<p className="text-xs text-emerald-600 mt-1">Successfully uploaded!</p>)}
-                {item.error && <p className="text-xs text-red-600 mt-1">{item.error}</p>}
+                {item.error && <p className="text-xs text-red-600 mt-1 break-all">{item.error}</p>}
               </div>
             ))}
           </div>
@@ -497,12 +710,12 @@ const SourceFilesPage = () => {
                 <div className="flex gap-2">
                   <button
                     onClick={handleAnalyzeAllFiles}
-                    disabled={isLoading || isProcessingAction || uploadedFiles.length === 0 || uploadedFiles.every(f => ['analyzing', 'analyzed', 'completed'].includes(f.analysisStatus))}
+                    disabled={isLoading || isProcessingAction || Object.keys(uploadProgress).length > 0 || uploadedFiles.length === 0 || uploadedFiles.every(f => ['analyzing', 'analyzed', 'completed'].includes(f.analysisStatus))}
                     className="flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg shadow-sm transition-colors text-sm whitespace-nowrap disabled:opacity-50"
                   > <Zap size={16} /> <span>Analyze All</span> </button>
                   <button
                     onClick={handleRemoveAllFiles}
-                    disabled={isLoading || isProcessingAction || uploadedFiles.length === 0}
+                    disabled={isLoading || isProcessingAction || Object.keys(uploadProgress).length > 0 || uploadedFiles.length === 0}
                     className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white font-medium rounded-lg shadow-sm transition-colors text-sm border border-red-600 whitespace-nowrap disabled:opacity-50"
                   > <Trash2 size={16} /> <span>Delete All</span> </button>
                 </div>
@@ -513,18 +726,24 @@ const SourceFilesPage = () => {
               <>
                 <div className="overflow-hidden rounded-lg border border-gray-200">
                   <div className="bg-gray-50 px-4 py-3 hidden md:grid grid-cols-12 gap-4 text-sm font-medium text-gray-600">
-                    <div className="col-span-6">File Name</div>
-                    <div className="col-span-4">Status</div>
+                    <div className="col-span-5">File Name</div>
+                    <div className="col-span-2">Type</div>
+                    <div className="col-span-3">Status</div>
                     <div className="col-span-2 text-right">Actions</div>
                   </div>
                   <ul className="divide-y divide-gray-200">
                     {filteredFiles.map((file) => (
                       <li key={file.id} className="bg-white hover:bg-gray-50 transition-colors px-4 py-3 grid md:grid-cols-12 gap-3 md:gap-4 items-center">
-                        <div className="md:col-span-6 flex items-center gap-3">
+                        <div className="md:col-span-5 flex items-center gap-3 min-w-0">
                           <div className="flex-shrink-0 w-9 h-9 rounded-md bg-gray-100 flex items-center justify-center"> {getFileIcon(file.name)} </div>
                           <div className="min-w-0"> <p className="font-medium text-gray-800 truncate" title={file.name}>{file.name}</p> </div>
                         </div>
-                        <div className="md:col-span-4 hidden md:flex items-center gap-1.5">
+                        <div className="md:col-span-2 text-sm text-gray-600">
+                            <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-md">
+                                {file.sourceType || 'N/A'}
+                            </span>
+                        </div>
+                        <div className="md:col-span-3 flex items-center gap-1.5">
                           {getStatusIcon(file.analysisStatus)}
                           <span className="text-sm">{getStatusText(file.analysisStatus)}</span>
                         </div>
@@ -532,12 +751,12 @@ const SourceFilesPage = () => {
                           <button
                             className="p-2 rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                             title="View file content" onClick={() => handleViewFile(file)}
-                            disabled={isProcessingAction}
+                            disabled={isProcessingAction || Object.keys(uploadProgress).length > 0}
                           > <Eye size={18} /> </button>
                           <button
                             className="p-2 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
                             onClick={() => handleDeleteFile(file.id, file.name)} title="Delete file"
-                            disabled={isProcessingAction}
+                            disabled={isProcessingAction || Object.keys(uploadProgress).length > 0}
                           > <Trash2 size={18} /> </button>
                         </div>
                       </li>
@@ -545,7 +764,7 @@ const SourceFilesPage = () => {
                   </ul>
                 </div>
                 <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5"> <Filter size={12} /> Showing {filteredFiles.length} of {uploadedFiles.length} files </p>
-                {allFilesProcessedServerStatus && (
+                {allFilesProcessedServerStatus && uploadedFiles.length > 0 && (
                   <div className="mt-6 text-center">
                     <Link
                       to={`/project/${projectId}/inventory`} 
@@ -575,7 +794,11 @@ const SourceFilesPage = () => {
         </div>
       </div>
 
-      {/* Toaster removed - now global in Layout.jsx */}
+      <UploadFilesModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onUploadConfirm={handleActualFileUploads}
+      />
 
       {isViewModalOpen && fileToView && (
         <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50 transition-opacity duration-300 ease-in-out backdrop-blur-sm">
