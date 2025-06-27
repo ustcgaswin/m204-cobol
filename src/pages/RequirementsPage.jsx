@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect,useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { FileText, ChevronRight, ChevronDown, Menu, X, ChevronLeft, Download, AlertTriangle, Loader2, Maximize2 } from 'lucide-react';
@@ -14,11 +14,68 @@ mermaid.initialize({
   startOnLoad: false,
   theme: 'default',
   securityLevel: 'loose',
+  suppressErrorRendering:true
 });
 
 // Modal component for Mermaid diagram popup
 const MermaidModal = ({ isOpen, onClose, svgContent }) => {
+  const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const containerRef = useRef(null);
+
+  // Reset zoom and position when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setScale(1);
+      setPosition({ x: 0, y: 0 });
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const handleZoomIn = () => {
+    setScale(prev => Math.min(prev * 1.2, 5)); // Max zoom 5x
+  };
+
+  const handleZoomOut = () => {
+    setScale(prev => Math.max(prev / 1.2, 0.1)); // Min zoom 0.1x
+  };
+
+  const handleReset = () => {
+    setScale(1);
+    setPosition({ x: 0, y: 0 });
+  };
+
+  const handleMouseDown = (e) => {
+    if (e.target.closest('.diagram-controls')) return; // Don't drag if clicking controls
+    e.preventDefault(); // Prevent text selection
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - position.x,
+      y: e.clientY - position.y
+    });
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    e.preventDefault(); // Prevent text selection during drag
+    setPosition({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleWheel = (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setScale(prev => Math.min(Math.max(prev * delta, 0.1), 5));
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -29,16 +86,96 @@ const MermaidModal = ({ isOpen, onClose, svgContent }) => {
       ></div>
       
       {/* Modal content */}
-      <div className="relative bg-white rounded-lg shadow-xl max-w-6xl max-h-[90vh] overflow-auto p-6 m-4">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 z-10"
-        >
-          <X size={24} />
-        </button>
+      <div className="relative bg-white rounded-lg shadow-xl w-full h-full max-w-[95vw] max-h-[95vh] overflow-hidden flex flex-col">
+        {/* Header with controls */}
+        <div className="diagram-controls flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleZoomIn}
+              className="p-2 rounded-md bg-white border border-gray-300 hover:bg-gray-50 text-gray-700"
+              title="Zoom In"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+                <line x1="11" y1="8" x2="11" y2="14"></line>
+                <line x1="8" y1="11" x2="14" y2="11"></line>
+              </svg>
+            </button>
+            <button
+              onClick={handleZoomOut}
+              className="p-2 rounded-md bg-white border border-gray-300 hover:bg-gray-50 text-gray-700"
+              title="Zoom Out"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+                <line x1="8" y1="11" x2="14" y2="11"></line>
+              </svg>
+            </button>
+            <button
+              onClick={handleReset}
+              className="px-3 py-2 rounded-md bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm"
+              title="Reset View"
+            >
+              Reset
+            </button>
+            <span className="text-sm text-gray-600 ml-2">
+              {Math.round(scale * 100)}%
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-500 hover:text-gray-700"
+          >
+            <X size={20} />
+          </button>
+        </div>
         
-        <div className="mt-8">
-          <div dangerouslySetInnerHTML={{ __html: svgContent }} />
+        {/* Scrollable content area with drag and zoom */}
+        <div 
+          ref={containerRef}
+          className="flex-1 overflow-hidden bg-gray-50 relative cursor-grab active:cursor-grabbing select-none"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
+          style={{ 
+            cursor: isDragging ? 'grabbing' : 'grab',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            MozUserSelect: 'none',
+            msUserSelect: 'none'
+          }}
+        >
+          <div className="w-full h-full flex items-center justify-center p-4">
+            <div 
+              className="transition-transform duration-100 ease-out"
+              style={{
+                transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+                transformOrigin: 'center center'
+              }}
+            >
+              <div 
+                className="bg-white rounded-lg shadow-lg p-4 select-none"
+                style={{
+                  userSelect: 'none',
+                  WebkitUserSelect: 'none',
+                  MozUserSelect: 'none',
+                  msUserSelect: 'none'
+                }}
+                dangerouslySetInnerHTML={{ __html: svgContent }} 
+              />
+            </div>
+          </div>
+          
+          {/* Instructions overlay */}
+          <div className="absolute bottom-4 left-4 bg-black bg-opacity-75 text-white text-xs px-3 py-2 rounded-lg select-none">
+            <div>• Mouse wheel: Zoom in/out</div>
+            <div>• Click and drag: Move diagram</div>
+            <div>• Click Reset to center</div>
+          </div>
         </div>
       </div>
     </div>
