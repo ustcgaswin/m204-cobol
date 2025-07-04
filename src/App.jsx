@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { toast } from 'sonner'; // Only import toast, not Toaster
+import { toast } from 'sonner'; 
 import { useNavigate } from 'react-router-dom';
 import ProjectCard from './components/ProjectCard.jsx';
 import CreateProjectModal from './components/CreateProjectModal.jsx';

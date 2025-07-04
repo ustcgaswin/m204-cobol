@@ -33,10 +33,8 @@ const MermaidModal = ({ isOpen, onClose, svgContent }) => {
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   const handleZoomIn = () => {
-    setScale(prev => Math.min(prev * 1.2, 5)); // Max zoom 5x
+    setScale(prev => Math.min(prev * 1.2, 10)); // Max zoom 10x (increased from 5x)
   };
 
   const handleZoomOut = () => {
@@ -74,7 +72,7 @@ const MermaidModal = ({ isOpen, onClose, svgContent }) => {
   const handleWheel = (e) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setScale(prev => Math.min(Math.max(prev * delta, 0.1), 5));
+    setScale(prev => Math.min(Math.max(prev * delta, 0.1), 10)); // Max zoom 10x (increased from 5x)
   };
 
   return (

@@ -19,7 +19,7 @@ const Layout = () => {
         </main>
       </div>
       
-      {/* Global Toaster - Simple and clean */}
+
       <Toaster 
         position="bottom-right"
         richColors={true}
