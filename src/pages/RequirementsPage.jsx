@@ -1,7 +1,7 @@
 import { useState, useEffect,useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { FileText, ChevronRight, ChevronDown, Menu, X, ChevronLeft, Download, AlertTriangle, Loader2, Maximize2 } from 'lucide-react';
+import { FileText, ChevronRight, ChevronDown, X, ChevronLeft, Download, AlertTriangle, Loader2, Maximize2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import remarkGfm from "remark-gfm";
 import rehypeSlug from 'rehype-slug';
@@ -32,6 +32,10 @@ const MermaidModal = ({ isOpen, onClose, svgContent }) => {
       setPosition({ x: 0, y: 0 });
     }
   }, [isOpen]);
+
+  if(!isOpen){
+    return null;
+  }
 
   const handleZoomIn = () => {
     setScale(prev => Math.min(prev * 1.2, 10)); // Max zoom 10x (increased from 5x)
@@ -381,30 +385,6 @@ const SkeletonLoader = () => (
         ))}
       </div>
     </div>
-
-    {/* List skeleton */}
-    <div className="space-y-3 mb-8">
-      <div className="flex items-start space-x-3">
-        <div className="w-2 h-2 bg-gray-200 rounded-full mt-2"></div>
-        <div className="h-4 bg-gray-200 rounded flex-1"></div>
-      </div>
-      <div className="flex items-start space-x-3">
-        <div className="w-2 h-2 bg-gray-200 rounded-full mt-2"></div>
-        <div className="h-4 bg-gray-200 rounded w-4/5"></div>
-      </div>
-      <div className="flex items-start space-x-3">
-        <div className="w-2 h-2 bg-gray-200 rounded-full mt-2"></div>
-        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-      </div>
-    </div>
-
-    {/* Another section */}
-    <div className="h-6 bg-gray-200 rounded-md mb-4 w-2/5"></div>
-    <div className="space-y-4">
-      <div className="h-4 bg-gray-200 rounded w-full"></div>
-      <div className="h-4 bg-gray-200 rounded w-4/5"></div>
-      <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-    </div>
   </div>
 );
 
@@ -452,7 +432,6 @@ const RequirementsPage = () => {
   const [error, setError] = useState(null);
   const [expandedSections, setExpandedSections] = useState({});
   const [showDesktopSidebar, setShowDesktopSidebar] = useState(true);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [tableOfContentsSections, setTableOfContentsSections] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -555,7 +534,6 @@ const RequirementsPage = () => {
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' });
     }
-    setMobileSidebarOpen(false);
   };
 
   const handleDownloadRequirements = () => {
@@ -648,51 +626,26 @@ const RequirementsPage = () => {
   };
 
   const renderDesktopSidebarContent = () => (
-      <>
-        <div className="flex items-center justify-between mb-4 pt-1 shrink-0">
+      <div className="flex flex-col h-full">
+        <div className="px-4 pt-4 mb-4 shrink-0">
           <h2 className="text-lg font-semibold text-gray-700">Table of Contents</h2>
         </div>
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-4">
           {(loading || isGenerating) ? <SidebarSkeleton /> : renderTableOfContents()}
         </div>
-      </>
-  );
-
-  const renderMobileSidebarContent = () => (
-      <>
-        <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200 shrink-0">
-          <h2 className="text-lg font-semibold text-gray-700">Table of Contents</h2>
-          <button
-            className="rounded-md text-gray-500 hover:text-gray-700 focus:outline-none"
-            onClick={() => setMobileSidebarOpen(false)}
-          >
-            <X size={20} />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 min-h-0">
-          {(loading || isGenerating) ? <SidebarSkeleton /> : renderTableOfContents()}
-        </div>
-      </>
+      </div>
   );
 
   if (loading || isGenerating) {
     return (
-      <div className="min-h-screen bg-gray-100 flex flex-col">
+      <div className="h-screen bg-gray-100 flex flex-col">
         <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-30 shrink-0">
           <div className="px-4 py-3 sm:px-6 lg:px-8 flex items-center justify-between">
             <div className="flex items-center">
-              <button
-                className="lg:hidden mr-3 text-gray-600 hover:text-gray-800"
-                onClick={() => setMobileSidebarOpen(true)}
-              >
-                <Menu size={24} />
-              </button>
-              <div>
-                <h1 className="text-xl font-semibold text-gray-800 flex items-center">
-                  <FileText size={20} className="mr-2 text-teal-600 flex-shrink-0" />
-                  Project Requirements
-                </h1>
-              </div>
+              <h1 className="text-xl font-semibold text-gray-800 flex items-center">
+                <FileText size={20} className="mr-2 text-teal-600 flex-shrink-0" />
+                Project Requirements
+              </h1>
             </div>
             <div className="flex items-center space-x-3">
               {isGenerating && (
@@ -715,7 +668,7 @@ const RequirementsPage = () => {
                 <Download size={20} />
               </button>
               <button
-                className="ml-2 p-1.5 rounded-md hidden lg:flex items-center justify-center text-gray-600 hover:bg-gray-100 hover:text-gray-800"
+                className="ml-2 p-1.5 rounded-md flex items-center justify-center text-gray-600 hover:bg-gray-100 hover:text-gray-800"
                 onClick={() => setShowDesktopSidebar(!showDesktopSidebar)}
                 title={showDesktopSidebar ? "Hide Table of Contents" : "Show Table of Contents"}
               >
@@ -726,20 +679,20 @@ const RequirementsPage = () => {
         </header>
 
         <div className="flex flex-1 overflow-hidden">
-          <aside className={`hidden lg:flex flex-col bg-gray-50 border-r border-gray-200 transition-all duration-300 ease-in-out shrink-0 ${showDesktopSidebar ? 'w-72 p-4' : 'w-0 p-0 overflow-hidden'}`}>
-            {showDesktopSidebar && renderDesktopSidebarContent()}
+          <aside className={`flex flex-col bg-gray-50 border-r border-gray-200 transition-all duration-300 ease-in-out shrink-0 ${showDesktopSidebar ? 'w-72' : 'w-0 overflow-hidden'}`}>
+            {showDesktopSidebar && (
+              <div className="flex flex-col h-full">
+                <div className="px-4 pt-4 mb-4 shrink-0">
+                  <h2 className="text-lg font-semibold text-gray-700">Table of Contents</h2>
+                </div>
+                <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-4">
+                  <SidebarSkeleton />
+                </div>
+              </div>
+            )}
           </aside>
 
-          {mobileSidebarOpen && (
-            <div className="fixed inset-0 z-40 lg:hidden">
-              <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setMobileSidebarOpen(false)}></div>
-              <div className="fixed inset-y-0 left-0 flex flex-col w-72 max-w-xs bg-white shadow-xl z-50">
-                {renderMobileSidebarContent()}
-              </div>
-            </div>
-          )}
-
-          <main className="flex-1 overflow-y-auto bg-white min-h-0">
+          <main className="flex-1 overflow-y-auto bg-white">
             <SkeletonLoader />
           </main>
         </div>
@@ -766,22 +719,14 @@ const RequirementsPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className="h-screen bg-gray-100 flex flex-col">
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-30 shrink-0">
         <div className="px-4 py-3 sm:px-6 lg:px-8 flex items-center justify-between">
           <div className="flex items-center">
-            <button
-              className="lg:hidden mr-3 text-gray-600 hover:text-gray-800"
-              onClick={() => setMobileSidebarOpen(true)}
-            >
-              <Menu size={24} />
-            </button>
-            <div>
-              <h1 className="text-xl font-semibold text-gray-800 flex items-center">
-                <FileText size={20} className="mr-2 text-teal-600 flex-shrink-0" />
-                Project Requirements
-              </h1>
-            </div>
+            <h1 className="text-xl font-semibold text-gray-800 flex items-center">
+              <FileText size={20} className="mr-2 text-teal-600 flex-shrink-0" />
+              Project Requirements
+            </h1>
           </div>
           <div className="flex items-center space-x-3">
             <Link
@@ -800,7 +745,7 @@ const RequirementsPage = () => {
               <Download size={20} />
             </button>
             <button
-              className="ml-2 p-1.5 rounded-md hidden lg:flex items-center justify-center text-gray-600 hover:bg-gray-100 hover:text-gray-800"
+              className="ml-2 p-1.5 rounded-md flex items-center justify-center text-gray-600 hover:bg-gray-100 hover:text-gray-800"
               onClick={() => setShowDesktopSidebar(!showDesktopSidebar)}
               title={showDesktopSidebar ? "Hide Table of Contents" : "Show Table of Contents"}
             >
@@ -811,32 +756,21 @@ const RequirementsPage = () => {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <aside className={`hidden lg:flex flex-col bg-gray-50 border-r border-gray-200 transition-all duration-300 ease-in-out shrink-0 ${showDesktopSidebar ? 'w-72 p-4' : 'w-0 p-0 overflow-hidden'}`}>
+        <aside className={`flex flex-col bg-gray-50 border-r border-gray-200 transition-all duration-300 ease-in-out shrink-0 ${showDesktopSidebar ? 'w-72' : 'w-0 overflow-hidden'}`}>
           {showDesktopSidebar && renderDesktopSidebarContent()}
         </aside>
 
-        {mobileSidebarOpen && (
-          <div className="fixed inset-0 z-40 lg:hidden">
-            <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setMobileSidebarOpen(false)}></div>
-            <div className="fixed inset-y-0 left-0 flex flex-col w-72 max-w-xs bg-white shadow-xl z-50">
-              {renderMobileSidebarContent()}
-            </div>
-          </div>
-        )}
-
-        <main className="flex-1 overflow-y-auto bg-white min-h-0">
+        <main className="flex-1 overflow-y-auto bg-white">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="h-[calc(100vh-var(--header-height,64px)-var(--footer-height,0px)-4rem)] overflow-y-auto">
-              <article className="prose prose-sm sm:prose lg:prose-lg max-w-none prose-headings:font-semibold prose-a:text-teal-600 hover:prose-a:text-teal-700">
-                <ReactMarkdown
-                  components={markdownComponents}
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeSlug]}
-                >
-                  {requirements}
-                </ReactMarkdown>
-              </article>
-            </div>
+            <article className="prose prose-sm sm:prose lg:prose-lg max-w-none prose-headings:font-semibold prose-a:text-teal-600 hover:prose-a:text-teal-700">
+              <ReactMarkdown
+                components={markdownComponents}
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeSlug]}
+              >
+                {requirements}
+              </ReactMarkdown>
+            </article>
           </div>
         </main> 
       </div>
