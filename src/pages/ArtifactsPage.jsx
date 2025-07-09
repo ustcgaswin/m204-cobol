@@ -10,8 +10,8 @@ import {
   Download,
   Loader2,
   CheckSquare,
-  Clipboard, // Added for Copy icon
-  Check // Added for Copied confirmation
+  Clipboard,
+  Check
 } from 'lucide-react';
 import JSZip from 'jszip';
 import apiClient from '../config/axiosConfig';
@@ -33,10 +33,12 @@ const mapBackendTypeToFrontendType = (backendType) => {
   if (!backendType) return 'Default';
   const lowerBackendType = backendType.toLowerCase();
   if (lowerBackendType === 'cobol') return 'COBOL';
-  if (lowerBackendType.startsWith('jcl')) return 'JCL'; // Catches jcl_general, jcl_vsam
+  if (lowerBackendType.startsWith('jcl')) return 'JCL';
   if (lowerBackendType === 'unit_test' || lowerBackendType === 'unittest') return 'UnitTest';
   return 'Default';
 };
+
+const ARTIFACTS_PER_PAGE = 12;
 
 const ArtifactsPage = () => {
   const { projectId } = useParams();
@@ -51,6 +53,10 @@ const ArtifactsPage = () => {
   const [viewModalData, setViewModalData] = useState({ name: '', content: '' });
   const [isZipping, setIsZipping] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     const fetchProjectDetailsAndArtifacts = async () => {
@@ -71,7 +77,7 @@ const ArtifactsPage = () => {
       setAvailableTabs([]);
       setActiveTab('');
       
-      let localCacheKeyNamePart = `ProjectID_${projectId}`; // Fallback for cache key
+      let localCacheKeyNamePart = `ProjectID_${projectId}`;
 
       try {
         const projectResponse = await apiClient.get(`/projects/${projectId}`);
@@ -95,10 +101,6 @@ const ArtifactsPage = () => {
         const cachedDataString = localStorage.getItem(cacheKey);
         if (cachedDataString) {
           const cachedStorageItem = JSON.parse(cachedDataString);
-          // Optional: Add timestamp check for cache invalidation here if needed in future
-          // const { artifacts: cachedArtifacts, timestamp } = cachedStorageItem;
-          // const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
-          // if (new Date().getTime() - new Date(timestamp).getTime() < CACHE_DURATION) {
           if (cachedStorageItem && Array.isArray(cachedStorageItem.artifacts)) {
             setAllArtifacts(cachedStorageItem.artifacts);
             const uniqueTypesInProject = [...new Set(cachedStorageItem.artifacts.map(a => a.type).filter(Boolean))];
@@ -112,15 +114,17 @@ const ArtifactsPage = () => {
               setActiveTab(sortedProjectTabs[0].id);
             }
             setLoading(false);
+            setCurrentPage(1);
+            setTotalPages(Math.ceil(cachedStorageItem.artifacts.length / ARTIFACTS_PER_PAGE) || 1);
             console.log(`Loaded artifacts from localStorage for key: ${cacheKey}`);
             return; 
           } else {
-            localStorage.removeItem(cacheKey); // Invalid data in cache
+            localStorage.removeItem(cacheKey);
           }
         }
       } catch (e) {
         console.error("Error reading or parsing artifacts from localStorage:", e);
-        localStorage.removeItem(cacheKey); // Corrupted cache, remove it
+        localStorage.removeItem(cacheKey);
       }
 
       try {
@@ -165,6 +169,8 @@ const ArtifactsPage = () => {
           if (sortedProjectTabs.length > 0) {
             setActiveTab(sortedProjectTabs[0].id);
           }
+          setCurrentPage(1);
+          setTotalPages(Math.ceil(processedArtifacts.length / ARTIFACTS_PER_PAGE) || 1);
           try {
             localStorage.setItem(cacheKey, JSON.stringify({ artifacts: processedArtifacts, timestamp: new Date().toISOString() }));
             console.log(`Saved artifacts to localStorage for key: ${cacheKey}`);
@@ -199,7 +205,14 @@ const ArtifactsPage = () => {
 
     fetchProjectDetailsAndArtifacts();
 
-  }, [projectId, projectNameForDisplay]);
+  }, [projectId]);
+
+  // Update pagination when artifacts or tab changes
+  useEffect(() => {
+    setCurrentPage(1);
+    const filtered = allArtifacts.filter(artifact => !activeTab || artifact.type === activeTab);
+    setTotalPages(Math.ceil(filtered.length / ARTIFACTS_PER_PAGE) || 1);
+  }, [allArtifacts, activeTab]);
 
   const handleViewContent = (artifact) => {
     setViewModalData({ name: artifact.name, content: artifact.content });
@@ -272,8 +285,19 @@ const ArtifactsPage = () => {
     }
   };
 
+  // Pagination logic
   const displayedArtifacts = allArtifacts
     .filter(artifact => !activeTab || artifact.type === activeTab);
+
+  const paginatedArtifacts = displayedArtifacts.slice(
+    (currentPage - 1) * ARTIFACTS_PER_PAGE,
+    currentPage * ARTIFACTS_PER_PAGE
+  );
+
+  const paginate = (pageNumber) => {
+    if (pageNumber < 1 || pageNumber > totalPages) return;
+    setCurrentPage(pageNumber);
+  };
 
   if (loading) {
     return (
@@ -408,48 +432,82 @@ const ArtifactsPage = () => {
             )}
 
             <div className={`bg-white p-4 flex-grow ${availableTabs.length > 0 ? 'rounded-b-lg shadow-sm' : 'rounded-lg shadow-sm mt-6'}`}>
-              {displayedArtifacts.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {displayedArtifacts.sort((a, b) => a.name.localeCompare(b.name)).map((artifact) => (
-                    <div
-                      key={artifact.id} 
-                      className="bg-white rounded-lg border border-gray-200 shadow-md hover:shadow-lg transition-shadow p-4 flex flex-col justify-between"
-                    >
-                      <div>
-                        <div className="flex items-center mb-2">
-                          {artifactCardIcons[artifact.type] || artifactCardIcons.Default}
-                          <h3 className="ml-2 text-md font-medium text-gray-800 truncate" title={artifact.name}>
-                            {artifact.name}
-                          </h3>
+              {paginatedArtifacts.length > 0 ? (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {paginatedArtifacts.sort((a, b) => a.name.localeCompare(b.name)).map((artifact) => (
+                      <div
+                        key={artifact.id} 
+                        className="bg-white rounded-lg border border-gray-200 shadow-md hover:shadow-lg transition-shadow p-4 flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-center mb-2">
+                            {artifactCardIcons[artifact.type] || artifactCardIcons.Default}
+                            <h3 className="ml-2 text-md font-medium text-gray-800 truncate" title={artifact.name}>
+                              {artifact.name}
+                            </h3>
+                          </div>
+                          <p className="text-xs text-gray-500">Type: {artifact.type || 'N/A'}</p>
+                          <p className="text-xs text-gray-500">Size: {artifact.size || 'N/A'}</p>
+                          <p className="text-xs text-gray-500">Modified: {artifact.lastModified || 'N/A'}</p>
+                          {artifact.description && (
+                            <p className="mt-2 text-xs text-gray-600 leading-relaxed">
+                              {artifact.description}
+                            </p>
+                          )}
                         </div>
-                        <p className="text-xs text-gray-500">Type: {artifact.type || 'N/A'}</p>
-                        <p className="text-xs text-gray-500">Size: {artifact.size || 'N/A'}</p>
-                        <p className="text-xs text-gray-500">Modified: {artifact.lastModified || 'N/A'}</p>
-                        {artifact.description && (
-                          <p className="mt-2 text-xs text-gray-600 leading-relaxed">
-                            {artifact.description}
-                          </p>
-                        )}
+                        <div className="mt-4 flex space-x-2">
+                          <button
+                            onClick={() => handleViewContent(artifact)}
+                            className="flex-1 flex items-center justify-center px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                          >
+                            <Eye size={16} className="mr-1.5" />
+                            View
+                          </button>
+                          <button
+                            onClick={() => handleDownload(artifact)}
+                            className="flex-1 flex items-center justify-center px-3 py-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+                          >
+                            <Download size={16} className="mr-1.5" />
+                            Download
+                          </button>
+                        </div>
                       </div>
-                      <div className="mt-4 flex space-x-2">
+                    ))}
+                  </div>
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="mt-8 flex justify-center items-center space-x-1">
+                      <button
+                        onClick={() => paginate(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Previous
+                      </button>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(number => (
                         <button
-                          onClick={() => handleViewContent(artifact)}
-                          className="flex-1 flex items-center justify-center px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                          key={number}
+                          onClick={() => paginate(number)}
+                          className={`px-4 py-2 text-sm font-medium border rounded-md ${
+                            currentPage === number
+                              ? 'bg-teal-500 text-white border-teal-500'
+                              : 'text-gray-700 bg-white border-gray-300 hover:bg-gray-50'
+                          }`}
                         >
-                          <Eye size={16} className="mr-1.5" />
-                          View
+                          {number}
                         </button>
-                        <button
-                          onClick={() => handleDownload(artifact)}
-                          className="flex-1 flex items-center justify-center px-3 py-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
-                        >
-                          <Download size={16} className="mr-1.5" />
-                          Download
-                        </button>
-                      </div>
+                      ))}
+                      <button
+                        onClick={() => paginate(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Next
+                      </button>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-center py-10">
                   <>
