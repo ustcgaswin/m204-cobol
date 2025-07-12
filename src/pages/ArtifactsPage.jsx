@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   FileText,
@@ -14,6 +14,7 @@ import {
   Check
 } from 'lucide-react';
 import JSZip from 'jszip';
+import * as monaco from 'monaco-editor';
 import apiClient from '../config/axiosConfig';
 
 const artifactCardIcons = {
@@ -38,6 +39,25 @@ const mapBackendTypeToFrontendType = (backendType) => {
   return 'Default';
 };
 
+// Function to get Monaco language based on artifact type
+const getMonacoLanguage = (artifactType, fileName) => {
+  const lowerType = artifactType?.toLowerCase() || '';
+  const lowerFileName = fileName?.toLowerCase() || '';
+  
+  if (lowerType === 'cobol' || lowerFileName.includes('cobol')) return 'cobol';
+  if (lowerType === 'jcl' || lowerFileName.includes('jcl')) return 'shell';
+  if (lowerType === 'unittest' || lowerFileName.includes('test')) return 'javascript';
+  if (lowerFileName.endsWith('.js')) return 'javascript';
+  if (lowerFileName.endsWith('.py')) return 'python';
+  if (lowerFileName.endsWith('.sql')) return 'sql';
+  if (lowerFileName.endsWith('.xml')) return 'xml';
+  if (lowerFileName.endsWith('.json')) return 'json';
+  if (lowerFileName.endsWith('.html')) return 'html';
+  if (lowerFileName.endsWith('.css')) return 'css';
+  
+  return 'text';
+};
+
 const ARTIFACTS_PER_PAGE = 12;
 
 const ArtifactsPage = () => {
@@ -50,14 +70,76 @@ const ArtifactsPage = () => {
   const [projectNameForDisplay, setProjectNameForDisplay] = useState('');
   const [loadingProjectName, setLoadingProjectName] = useState(true);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  const [viewModalData, setViewModalData] = useState({ name: '', content: '' });
+  const [viewModalData, setViewModalData] = useState({ name: '', content: '', type: '' });
   const [isZipping, setIsZipping] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+
+  // Monaco Editor refs
+  const editorRef = useRef(null);
+  const monacoRef = useRef(null);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
+  // Initialize Monaco Editor
+  useEffect(() => {
+    if (isViewModalOpen && viewModalData.content) {
+      // Wait for the modal to render
+      const timer = setTimeout(() => {
+        if (editorRef.current && !monacoRef.current) {
+          const language = getMonacoLanguage(viewModalData.type, viewModalData.name);
+          
+          monacoRef.current = monaco.editor.create(editorRef.current, {
+            value: viewModalData.content,
+            language: language,
+            theme: 'vs',
+            readOnly: true,
+            automaticLayout: true,
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            fontSize: 14,
+            lineNumbers: 'on',
+            folding: true,
+            wordWrap: 'on',
+            contextmenu: true,
+            selectOnLineNumbers: true,
+            glyphMargin: false,
+            lineDecorationsWidth: 0,
+            lineNumbersMinChars: 3,
+            renderWhitespace: 'selection',
+            scrollbar: {
+              vertical: 'visible',
+              horizontal: 'visible',
+              useShadows: false,
+              verticalHasArrows: false,
+              horizontalHasArrows: false,
+              verticalScrollbarSize: 10,
+              horizontalScrollbarSize: 10
+            }
+          });
+        }
+      }, 100);
+
+      return () => {
+        clearTimeout(timer);
+        if (monacoRef.current) {
+          monacoRef.current.dispose();
+          monacoRef.current = null;
+        }
+      };
+    }
+  }, [isViewModalOpen, viewModalData]);
+
+  // Cleanup Monaco Editor when modal closes
+  useEffect(() => {
+    if (!isViewModalOpen && monacoRef.current) {
+      monacoRef.current.dispose();
+      monacoRef.current = null;
+    }
+  }, [isViewModalOpen]);
+
+  // Fetch project name and artifacts
   useEffect(() => {
     const fetchProjectDetailsAndArtifacts = async () => {
       if (!projectId) {
@@ -78,19 +160,23 @@ const ArtifactsPage = () => {
       setActiveTab('');
       
       let localCacheKeyNamePart = `ProjectID_${projectId}`;
+      let projectName = '';
 
       try {
         const projectResponse = await apiClient.get(`/projects/${projectId}`);
         const projectData = projectResponse.data?.data || projectResponse.data;
         if (projectData && projectData.project_name) {
           setProjectNameForDisplay(projectData.project_name);
+          projectName = projectData.project_name;
           localCacheKeyNamePart = projectData.project_name.replace(/\s+/g, '_');
         } else {
           setProjectNameForDisplay(`ID: ${projectId}`);
+          projectName = `ID: ${projectId}`;
         }
       } catch (projectError) {
         console.error(`Failed to fetch project name for ID ${projectId}:`, projectError);
         setProjectNameForDisplay(`ID: ${projectId}`);
+        projectName = `ID: ${projectId}`;
       } finally {
         setLoadingProjectName(false);
       }
@@ -178,7 +264,7 @@ const ArtifactsPage = () => {
             console.error("Error saving artifacts to localStorage:", e);
           }
         } else {
-          const currentProjectIdentifier = projectNameForDisplay || `ID: ${projectId}`;
+          const currentProjectIdentifier = projectName || `ID: ${projectId}`;
           let specificError = `No displayable artifacts found for project ${currentProjectIdentifier}.`;
           if (Array.isArray(backendResponseData) && backendResponseData.length === 0) {
              specificError = `No artifacts were generated for project ${currentProjectIdentifier}. The project might be empty or not contain relevant M204 files.`;
@@ -190,7 +276,7 @@ const ArtifactsPage = () => {
 
       } catch (e) {
         console.error("Failed to fetch or process artifacts from API:", e);
-        const currentProjectIdentifier = projectNameForDisplay || `ID: ${projectId}`;
+        const currentProjectIdentifier = projectName || `ID: ${projectId}`;
         let errorMessage = `Failed to load artifacts for project ${currentProjectIdentifier}.`;
         if (e.response) {
             errorMessage = e.response.data?.detail || e.message || errorMessage;
@@ -215,7 +301,11 @@ const ArtifactsPage = () => {
   }, [allArtifacts, activeTab]);
 
   const handleViewContent = (artifact) => {
-    setViewModalData({ name: artifact.name, content: artifact.content });
+    setViewModalData({ 
+      name: artifact.name, 
+      content: artifact.content, 
+      type: artifact.type 
+    });
     setIsViewModalOpen(true);
     setIsCopied(false); 
   };
@@ -526,43 +616,65 @@ const ArtifactsPage = () => {
         ) : null}
       </div>
 
-      {/* View Content Modal */}
+      {/* View Content Modal with Monaco Editor */}
       {isViewModalOpen && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
             <div className="flex justify-between items-center p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900 truncate" title={viewModalData.name}>
-                {viewModalData.name}
-              </h3>
+              <div className="flex items-center">
+                <h3 className="text-lg font-semibold text-gray-900 truncate" title={viewModalData.name}>
+                  {viewModalData.name}
+                </h3>
+                <span className="ml-2 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">
+                  {viewModalData.type}
+                </span>
+              </div>
               <button
                 onClick={() => setIsViewModalOpen(false)}
-                className="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center"
-                aria-label="Close modal"
+                className="text-gray-400 bg-transparent hover:bg-gray-200 rounded-full p-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                aria-label="Close"
               >
                 <X size={20} />
               </button>
             </div>
-            <div className="p-4 overflow-auto">
-              <pre className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md whitespace-pre-wrap break-all">
-                {viewModalData.content || "No content available."}
-              </pre>
+            <div className="flex-1 overflow-auto p-4">
+              <div
+                ref={editorRef}
+                style={{ width: '100%', height: '60vh', minHeight: 300, borderRadius: 8, border: '1px solid #e5e7eb' }}
+                className="bg-gray-50"
+              />
             </div>
-            <div className="flex items-center justify-end p-4 border-t space-x-2">
-              <button
-                onClick={handleCopyContent}
-                className={`px-4 py-2 text-sm font-medium rounded-md flex items-center justify-center transition-colors
-                            ${isCopied 
-                              ? 'bg-green-500 hover:bg-green-600 text-white' 
-                              : 'bg-blue-500 hover:bg-blue-600 text-white'}`}
-                disabled={!viewModalData.content}
-              >
-                {isCopied ? <Check size={16} className="mr-1.5" /> : <Clipboard size={16} className="mr-1.5" />}
-                {isCopied ? 'Copied!' : 'Copy'}
-              </button>
+            <div className="flex items-center justify-between p-4 border-t">
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleCopyContent}
+                  className="inline-flex items-center px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500"
+                >
+                  {isCopied ? (
+                    <>
+                      <Check size={16} className="mr-1" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Clipboard size={16} className="mr-1" />
+                      Copy
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => handleDownload(viewModalData)}
+                  className="inline-flex items-center px-3 py-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500"
+                >
+                  <Download size={16} className="mr-1" />
+                  Download
+                </button>
+              </div>
               <button
                 onClick={() => setIsViewModalOpen(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                className="inline-flex items-center px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500"
               >
+                <X size={16} className="mr-1" />
                 Close
               </button>
             </div>

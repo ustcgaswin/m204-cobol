@@ -11,9 +11,13 @@ const Navbar = () => {
       <div className="px-4"> 
         <div className="flex justify-between items-center h-16">
           {/* Logo and Brand */}
-          <Link to="/" className="flex items-center group">
+          <Link
+            to="/"
+            className="flex items-center group focus:outline-none focus:ring-0"
+            tabIndex={0}
+          >
             <div
-              className="flex-shrink-0 bg-teal-800 bg-opacity-20 p-2 rounded-lg mr-3 group-hover:bg-opacity-30 transition-colors"
+              className="flex-shrink-0 bg-teal-800 bg-opacity-20 p-2 rounded-lg mr-3 group-hover:bg-opacity-30 transition-colors focus:outline-none focus:ring-0"
             >
               <Code size={20} />
             </div>
@@ -29,8 +33,9 @@ const Navbar = () => {
           <div className="hidden md:flex items-center space-x-1">
             <Link
               to="/"
-              className="px-4 py-2 rounded-md text-sm font-medium text-teal-100 hover:bg-teal-500 hover:text-white transition-colors"
+              className="px-4 py-2 rounded-md text-sm font-medium text-teal-100 hover:bg-teal-500 hover:text-white transition-colors focus:outline-none focus:ring-0"
               onClick={() => setIsMenuOpen(false)} // Close menu on navigation
+              tabIndex={0}
             >
               Dashboard
             </Link>
@@ -41,7 +46,7 @@ const Navbar = () => {
           <div className="md:hidden flex items-center">
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="p-2 rounded-md text-teal-100 hover:bg-teal-500 hover:text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white transition-colors"
+              className="p-2 rounded-md text-teal-100 hover:bg-teal-500 hover:text-white focus:outline-none focus:ring-0 transition-colors"
               aria-expanded={isMenuOpen}
               aria-controls="mobile-menu"
             >
@@ -58,13 +63,14 @@ const Navbar = () => {
           <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
             <Link
               to="/"
-              className="flex items-center w-full px-3 py-2 rounded-md text-base font-medium text-teal-100 hover:bg-teal-500 hover:text-white transition-colors"
+              className="flex items-center w-full px-3 py-2 rounded-md text-base font-medium text-teal-100 hover:bg-teal-500 hover:text-white transition-colors focus:outline-none focus:ring-0"
               onClick={() => setIsMenuOpen(false)} // Close menu on navigation
+              tabIndex={0}
             >
               <Home size={18} className="mr-3" />
               Dashboard
             </Link>
-            {/* Add other mobile navigation links here if needed */}
+            
           </div>
         </div>
       )}
@@ -72,4 +78,4 @@ const Navbar = () => {
   );
 };
 
-export default Navbar; // Corrected export statement
+export default Navbar; 

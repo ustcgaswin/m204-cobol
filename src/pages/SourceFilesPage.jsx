@@ -63,7 +63,7 @@ const SOURCE_TYPE_OPTIONS = [
   { value: 'other', label: 'Other' },
 ];
 
-// Upload Files Modal Component
+
 const UploadFilesModal = ({ isOpen, onClose, onUploadConfirm }) => {
   const [selectedFiles, setSelectedFiles] = useState([]); // Array of { file: File, type: string, id: string }
   const fileInputRefModal = useRef(null);
@@ -478,7 +478,7 @@ const SourceFilesPage = () => {
   };
 
   const handleViewFile = async (file) => {
-    // ... existing handleViewFile logic ...
+    
     if (file.originalFile && typeof FileReader !== "undefined") {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -529,7 +529,7 @@ const SourceFilesPage = () => {
   };
 
   const handleAnalyzeAllFiles = async () => {
-    // ... existing handleAnalyzeAllFiles logic ...
+   
     if (uploadedFiles.length === 0 || !projectId) return;
     
     setUploadedFiles(prevFiles => prevFiles.map(f => ({ ...f, analysisStatus: 'analyzing' })));
@@ -551,7 +551,7 @@ const SourceFilesPage = () => {
   };
 
   const handleRemoveAllFiles = () => {
-    // ... existing handleRemoveAllFiles logic ...
+    
     if (uploadedFiles.length === 0) return;
     openConfirmationModal({
       title: "Delete All Files Permanently",

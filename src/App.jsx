@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { toast } from 'sonner'; 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import ProjectCard from './components/ProjectCard.jsx';
 import CreateProjectModal from './components/CreateProjectModal.jsx';
 import apiClient from './config/axiosConfig.js';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2, ArrowDownAZ, ArrowUpAZ } from 'lucide-react';
 
-const PROJECTS_PER_PAGE = 6;
+const PROJECTS_PER_PAGE = 3;
 
 // Confirmation Modal Component (can be moved to a separate file)
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Confirm", cancelText = "Cancel", isLoading = false }) => {
@@ -58,7 +58,9 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
 
 function App() {
   const navigate = useNavigate();
-  const [projects, setProjects] = useState([]);
+  const location = useLocation();
+  const [allProjects, setAllProjects] = useState([]); // Store all fetched projects
+  const [projects, setProjects] = useState([]); // Filtered and sorted projects
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -70,6 +72,7 @@ function App() {
   const [isCreatingProject, setIsCreatingProject] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortOrder, setSortOrder] = useState('desc'); // 'asc' or 'desc'
 
   // Confirmation Modal State
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
@@ -106,60 +109,72 @@ function App() {
     navigate(`/project/${projectId}`);
   };
 
-  // Fetch Projects
-  const fetchProjects = useCallback(async (search = searchTerm) => {
+  // Fetch all projects ONCE on mount
+  const fetchAllProjects = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const response = await apiClient.get('/projects?limit=1000');
-      
       let fetchedProjects = response.data.data.map(p => ({
         id: p.project_id.toString(),
         name: p.project_name,
         description: p.description,
-        lastUpdated: p.updated_at || new Date().toISOString(),
+        createdAt: p.created_at || new Date().toISOString(),
       }));
-
-      if (search.trim()) {
-        const lowerSearchTerm = search.toLowerCase();
-        fetchedProjects = fetchedProjects.filter(
-          p =>
-            p.name.toLowerCase().includes(lowerSearchTerm) ||
-            (p.description && p.description.toLowerCase().includes(lowerSearchTerm))
-        );
-      }
-      
-      setProjects(fetchedProjects);
-      // Recalculate totalPages after projects are set/filtered
-      const newTotalPages = Math.ceil(fetchedProjects.length / PROJECTS_PER_PAGE);
-      setTotalPages(newTotalPages);
-
-      // Adjust currentPage if it's out of bounds after filtering/fetching
-      if (currentPage > newTotalPages && newTotalPages > 0) {
-        setCurrentPage(newTotalPages);
-      } else if (newTotalPages === 0 && fetchedProjects.length === 0) { // if no projects at all
-        setCurrentPage(1);
-      }
-
+      setAllProjects(fetchedProjects);
     } catch (err) {
       console.error("Failed to fetch projects:", err);
       setError(err.response?.data?.detail || "Failed to fetch projects. Please try again.");
-      setProjects([]);
-      setTotalPages(1); // Reset total pages on error
-      setCurrentPage(1); // Reset current page on error
+      setAllProjects([]);
       toast.error(err.response?.data?.detail || "Failed to fetch projects. Please try again.");
     } finally {
       setIsLoading(false);
     }
-  }, [searchTerm, currentPage]);
+  }, []);
 
+  // Only fetch ONCE on mount
   useEffect(() => {
-    fetchProjects(searchTerm);
-  }, [fetchProjects, searchTerm]);
+    fetchAllProjects();
+  }, [fetchAllProjects]);
+
+  // Filter and sort projects locally whenever allProjects, searchTerm, or sortOrder changes
+  useEffect(() => {
+    let filtered = allProjects;
+    if (searchTerm.trim()) {
+      const lowerSearchTerm = searchTerm.toLowerCase();
+      filtered = filtered.filter(
+        p =>
+          p.name.toLowerCase().includes(lowerSearchTerm) ||
+          (p.description && p.description.toLowerCase().includes(lowerSearchTerm))
+      );
+    }
+    filtered = [...filtered].sort((a, b) => {
+      if (sortOrder === 'asc') {
+        return new Date(a.createdAt) - new Date(b.createdAt);
+      } else {
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      }
+    });
+    setProjects(filtered);
+    const newTotalPages = Math.ceil(filtered.length / PROJECTS_PER_PAGE);
+    setTotalPages(newTotalPages);
+
+    // Adjust currentPage if it's out of bounds after filtering
+    if (currentPage > newTotalPages && newTotalPages > 0) {
+      setCurrentPage(newTotalPages);
+    } else if (newTotalPages === 0 && filtered.length === 0) {
+      setCurrentPage(1);
+    }
+  }, [allProjects, searchTerm, sortOrder, currentPage]);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);
+
+  // Get highlighted project ID from navigation state (if any)
+  const highlightedProjectId = location.state?.highlight && location.pathname.startsWith('/project/')
+    ? location.pathname.split('/').pop()
+    : null;
 
   const handleCreateProject = async (e) => {
     e.preventDefault();
@@ -180,13 +195,18 @@ function App() {
         setNewProjectDescription('');
         setShowCreateForm(false);
         toast.success("Project created successfully!");
-        // No need to set searchTerm to '', let fetchProjects handle current search
-        await fetchProjects(searchTerm); // Refetch with current search term
+        await fetchAllProjects(); // Refetch all projects
         setCurrentPage(1); // Go to first page after creation
+
+        // Navigate to the new project's page and highlight it
+        const newProjectId = response.data.data?.project_id || response.data.project_id;
+        if (newProjectId) {
+          navigate(`/project/${newProjectId}`, { state: { highlight: true } });
+        }
       } else {
         console.warn('Project created, but response was not as expected:', response);
         toast.error('Project created, but there was an issue updating the list.');
-        await fetchProjects(searchTerm);
+        await fetchAllProjects();
       }
     } catch (err) {
       console.error("Failed to create project:", err);
@@ -210,19 +230,18 @@ function App() {
       await apiClient.delete(`/projects/${projectId}`);
       toast.success(`Project "${projectName}" deleted successfully.`);
       
-      // Update projects state locally
-      const updatedProjects = projects.filter(p => p.id !== projectId);
-      setProjects(updatedProjects);
+      // Update allProjects state locally
+      const updatedProjects = allProjects.filter(p => p.id !== projectId);
+      setAllProjects(updatedProjects);
 
       const newTotalPages = Math.ceil(updatedProjects.length / PROJECTS_PER_PAGE);
       setTotalPages(newTotalPages);
 
       if (currentPage > newTotalPages && newTotalPages > 0) {
         setCurrentPage(newTotalPages);
-      } else if (newTotalPages === 0) { // If all projects are deleted or last project on page deleted
+      } else if (newTotalPages === 0) {
         setCurrentPage(1);
       } else {
-        // If current page is still valid, check if currentProjects becomes empty
         const newCurrentProjects = updatedProjects.slice((currentPage - 1) * PROJECTS_PER_PAGE, currentPage * PROJECTS_PER_PAGE);
         if (newCurrentProjects.length === 0 && currentPage > 1) {
           setCurrentPage(currentPage - 1);
@@ -252,7 +271,7 @@ function App() {
         <h1 className="text-3xl font-bold text-gray-800">Projects Dashboard</h1>
         <button
           onClick={() => setShowCreateForm(true)}
-          className="bg-teal-500 hover:bg-teal-600 text-white font-semibold py-2 px-4 rounded shadow transition duration-150 ease-in-out w-full sm:w-auto flex items-center"
+          className="bg-teal-500 hover:bg-teal-600 text-white font-semibold py-2 px-4 rounded shadow transition duration-150 ease-in-out w-full sm:w-auto flex items-center focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2"
         >
           <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
@@ -261,23 +280,36 @@ function App() {
         </button>
       </div>
 
-      <div className="mb-6 p-4 bg-gray-50 rounded-lg shadow">
-        <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
-          <div>
-            <label htmlFor="searchProjects" className="block text-sm font-medium text-gray-700 mb-1">
-              Search Projects
-            </label>
-            <input
-              type="text"
-              id="searchProjects"
-              placeholder="Search by name or description..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-teal-500 focus:border-teal-500"
-            />
-          </div>
-        </div>
+    <div className="mb-6 p-6 bg-white rounded-lg shadow-sm border border-gray-200">
+  <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+    <div className="flex-1">
+      <label htmlFor="searchProjects" className="block text-sm font-semibold text-gray-800 mb-2">
+        Search Projects
+      </label>
+      <input
+        type="text"
+        id="searchProjects"
+        placeholder="Search by name or description..."
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all duration-200 text-gray-900 placeholder-gray-500"
+      />
+    </div>
+    <div className="flex items-end">
+      <div className="flex flex-col">
+        <label className="text-sm font-semibold text-gray-800 mb-2">Sort by Created Date</label>
+        <button
+          onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+          className="flex items-center px-4 py-3 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-gray-700 shadow-sm transition-all duration-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+          title={`Sort by created date ${sortOrder === 'asc' ? 'descending' : 'ascending'}`}
+        >
+          {sortOrder === 'asc' ? <ArrowDownAZ size={18} /> : <ArrowUpAZ size={18} />}
+          <span className="ml-2 font-medium">{sortOrder === 'asc' ? 'Oldest First' : 'Newest First'}</span>
+        </button>
       </div>
+    </div>
+  </div>
+</div>
 
       <CreateProjectModal
         isOpen={showCreateForm}
@@ -313,6 +345,7 @@ function App() {
                 project={project} 
                 onDeleteRequest={handleDeleteProjectRequest}
                 onCardClick={handleProjectCardClick}
+                highlighted={highlightedProjectId === project.id}
               />
             ))}
           </div>
@@ -370,9 +403,9 @@ function App() {
         isLoading={isProcessingAction}
       />
 
-      {/* Toaster removed - now global in Layout.jsx */}
-    </div>
-  );
+            {/* Toaster removed - now global in Layout.jsx */}
+      </div>
+        );
 }
 
 export default App;

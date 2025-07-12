@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom';
-import { Trash2, Calendar, ChevronRight } from 'lucide-react'; // Added Calendar and ChevronRight icons
+import { Trash2, Calendar, ChevronRight } from 'lucide-react';
 
 const ProjectCard = ({ project, onDeleteRequest, onCardClick }) => {
-  const { id, name, description, lastUpdated } = project;
+  const { id, name, description, createdAt } = project; // changed from lastUpdated
 
   // Format date to be more readable
-  const formattedDate = lastUpdated 
-    ? new Date(lastUpdated).toLocaleDateString(undefined, {
+  const formattedDate = createdAt 
+    ? new Date(createdAt).toLocaleDateString(undefined, {
         year: 'numeric',
         month: 'short',
         day: 'numeric'
@@ -16,8 +16,6 @@ const ProjectCard = ({ project, onDeleteRequest, onCardClick }) => {
   // Handle description truncation with word boundaries
   const truncateDescription = (text, maxLength) => {
     if (!text || text.length <= maxLength) return text;
-    
-    // Find the last space before maxLength
     const lastSpaceIndex = text.lastIndexOf(' ', maxLength);
     const truncatedText = text.substring(0, lastSpaceIndex > 0 ? lastSpaceIndex : maxLength);
     return `${truncatedText}...`;
@@ -27,14 +25,13 @@ const ProjectCard = ({ project, onDeleteRequest, onCardClick }) => {
   
   // Handle delete confirmation with user feedback
   const handleDelete = (e) => {
-    e.preventDefault(); // Prevent event bubbling
+    e.preventDefault();
     e.stopPropagation();
     onDeleteRequest(id, name);
   };
 
   // Handle card click
   const handleCardClick = (e) => {
-    // Only trigger card click if not clicking on interactive elements
     if (e.target.closest('button') || e.target.closest('a')) {
       return;
     }
@@ -60,11 +57,11 @@ const ProjectCard = ({ project, onDeleteRequest, onCardClick }) => {
           {truncatedDescription || "No description provided"}
         </p>
         
-        {/* Date Section - Made more prominent */}
+        {/* Date Section - Now shows "Created" */}
         {formattedDate && (
           <div className="flex items-center text-xs text-gray-500 mb-4 mt-auto">
             <Calendar size={14} className="mr-1" />
-            <span>Updated {formattedDate}</span>
+            <span>Created {formattedDate}</span>
           </div>
         )}
         
@@ -72,7 +69,7 @@ const ProjectCard = ({ project, onDeleteRequest, onCardClick }) => {
         <div className="flex justify-between items-center gap-2 mt-2">
           <Link
             to={`/project/${id}`}
-            onClick={(e) => e.stopPropagation()} // Prevent card click when clicking the button
+            onClick={(e) => e.stopPropagation()}
             className="flex-grow inline-flex items-center justify-center bg-teal-600 hover:bg-teal-700 focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 focus:outline-none text-white font-medium py-2 px-4 rounded-md text-sm transition-all duration-200"
             aria-label={`Open ${name} project details`}
           >
@@ -91,7 +88,7 @@ const ProjectCard = ({ project, onDeleteRequest, onCardClick }) => {
         </div>
       </div>
       
-      {/* Hover Effect Overlay - Visual feedback for card being interactive */}
+      {/* Hover Effect Overlay */}
       <div className="absolute inset-0 border-2 border-transparent rounded-lg group-hover:border-teal-500 pointer-events-none transition-all duration-200"></div>
     </div>
   );

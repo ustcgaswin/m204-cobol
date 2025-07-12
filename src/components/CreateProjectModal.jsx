@@ -8,7 +8,7 @@ function CreateProjectModal({
   newProjectDescription,
   setNewProjectDescription,
   handleCreateProject,
-  isCreatingProject, // Added prop
+  isCreatingProject,
 }) {
   const modalRef = useRef(null);
   const nameInputRef = useRef(null);
