@@ -191,8 +191,9 @@ const MermaidDiagram = ({ children }) => {
   const [error, setError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  // Fix: Generate diagramId only once using useMemo or useState
   const [diagramId] = useState(() => `mermaid-${Math.random().toString(36).substr(2, 9)}`);
+  const [diagramCode, setDiagramCode] = useState(children.toString());
+  const [isFixing, setIsFixing] = useState(false);
 
   useEffect(() => {
     // Ensure component is mounted
@@ -204,53 +205,78 @@ const MermaidDiagram = ({ children }) => {
 
     const renderDiagram = async () => {
       try {
+        // When re-rendering, start with loading state
         setIsLoading(true);
         setError(null);
         
-        // Small delay to ensure DOM is ready
         await new Promise(resolve => setTimeout(resolve, 100));
         
-        const diagramCode = children.toString();
         const { svg } = await mermaid.render(diagramId, diagramCode);
         setSvgContent(svg);
       } catch (err) {
         console.error('Mermaid rendering error:', err);
-        setError('Failed to render diagram');
+        setError(err.message || 'Failed to render diagram');
       } finally {
         setIsLoading(false);
       }
     };
 
     renderDiagram();
-  }, [children, diagramId, isMounted]);
+  }, [diagramCode, diagramId, isMounted]);
+
+  const handleRetry = () => {
+    setIsLoading(true);
+    setError(null);
+    const renderAgain = async () => {
+        try {
+            await new Promise(resolve => setTimeout(resolve, 50));
+            const { svg } = await mermaid.render(diagramId + '-retry', diagramCode);
+            setSvgContent(svg);
+        } catch (err) {
+            console.error('Mermaid retry rendering error:', err);
+            setError(err.message || 'Failed to render diagram');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    renderAgain();
+  };
+
+  const handleAutoFix = async () => {
+    if (!error) return;
+    setIsFixing(true);
+    setError(null);
+    try {
+      const response = await apiClient.post('/analysis/fix-mermaid', {
+        mermaid_code: diagramCode,
+        error_message: error,
+      });
+      
+      const { fixed_mermaid_code } = response.data;
+      if (fixed_mermaid_code) {
+        setDiagramCode(fixed_mermaid_code); // This will trigger re-render via useEffect
+      } else {
+        setError("Auto-fix did not return new code. Please try again.");
+      }
+    } catch (fixError) {
+      console.error("Mermaid auto-fix API error:", fixError);
+      setError(fixError.response?.data?.detail || "The auto-fix request failed.");
+    } finally {
+      setIsFixing(false);
+    }
+  };
 
   const handleClick = () => {
-    if (!svgContent && !isLoading) {
-      // If diagram failed to load, try re-rendering on click
-      setIsLoading(true);
-      const renderDiagram = async () => {
-        try {
-          const diagramCode = children.toString();
-          const { svg } = await mermaid.render(diagramId + '-retry', diagramCode);
-          setSvgContent(svg);
-        } catch (err) {
-          console.error('Mermaid retry rendering error:', err);
-          setError('Failed to render diagram');
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      renderDiagram();
-    } else if (svgContent) {
+    if (svgContent) {
       setModalOpen(true);
     }
   };
 
-  if (isLoading) {
+  if (isLoading || isFixing) {
     return (
       <div className="flex items-center justify-center p-8 bg-gray-50 rounded-lg mb-4">
         <Loader2 className="animate-spin h-6 w-6 text-gray-500 mr-2" />
-        <span className="text-gray-600">Rendering diagram...</span>
+        <span className="text-gray-600">{isFixing ? 'Attempting to fix diagram...' : 'Rendering diagram...'}</span>
       </div>
     );
   }
@@ -258,16 +284,32 @@ const MermaidDiagram = ({ children }) => {
   if (error || !svgContent) {
     return (
       <div 
-        className="p-4 bg-red-50 border border-red-200 rounded-lg mb-4 cursor-pointer hover:bg-red-100"
-        onClick={handleClick}
+        className="p-4 bg-red-50 border border-red-200 rounded-lg mb-4"
       >
-        <div className="flex items-center text-red-700">
-          <AlertTriangle size={16} className="mr-2" />
-          <span className="font-medium">Diagram Error - Click to retry</span>
+        <div className="flex items-center justify-between text-red-700">
+            <div className="flex items-center">
+                <AlertTriangle size={16} className="mr-2" />
+                <span className="font-medium">Diagram Error</span>
+            </div>
+            <div className="flex items-center space-x-2">
+                <button 
+                    onClick={handleRetry}
+                    className="px-3 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                    Retry
+                </button>
+                <button 
+                    onClick={handleAutoFix}
+                    disabled={isFixing}
+                    className="px-3 py-1 text-xs font-medium text-white bg-teal-600 border border-teal-600 rounded-md hover:bg-teal-700 disabled:bg-teal-300 disabled:cursor-not-allowed"
+                >
+                    Auto-Fix
+                </button>
+            </div>
         </div>
-        <p className="text-red-600 text-sm mt-1">{error || 'Failed to render diagram'}</p>
+        <p className="text-red-600 text-sm mt-2">{error || 'Failed to render diagram'}</p>
         <pre className="mt-2 text-xs text-gray-600 bg-white p-2 rounded border overflow-auto">
-          {children}
+          {diagramCode}
         </pre>
       </div>
     );
