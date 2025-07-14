@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Upload, FileText, Trash2, ArrowLeft, File, Image, Code, Archive, Eye, Zap,
-  AlertTriangle, CheckCircle, Search, Filter, Loader2, X
+  AlertTriangle, CheckCircle, Search, Filter, Loader2, X, Database
 } from 'lucide-react';
 import { useParams, Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -63,10 +63,67 @@ const SOURCE_TYPE_OPTIONS = [
   { value: 'other', label: 'Other' },
 ];
 
+const FileUploadItem = ({ item, onTypeChange, onDbNameChange, onRemove }) => {
+  return (
+    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 bg-gray-50 rounded-md border border-gray-200">
+      <div className="flex items-center gap-3 flex-grow min-w-0">
+        <FileText size={20} className="text-gray-500 flex-shrink-0" />
+        <div className="flex-grow min-w-0">
+          <p className="truncate text-sm font-medium text-gray-800" title={item.file.name}>
+            {item.file.name}
+          </p>
+          <p className="text-xs text-gray-500">{ (item.file.size / 1024).toFixed(2) } KB</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+        <select
+          value={item.type}
+          onChange={(e) => onTypeChange(item.id, e.target.value)}
+          className="p-2 border border-gray-300 rounded-md text-sm focus:ring-teal-500 focus:border-teal-500 w-full sm:w-auto"
+        >
+          {SOURCE_TYPE_OPTIONS.map(opt => (
+            <option key={opt.value} value={opt.value} disabled={opt.value === ''}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        {item.type === 'parmlib' && (
+          <div className="relative w-full sm:w-auto">
+            <Database size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="DB Name"
+              value={item.dbName}
+              onChange={(e) => onDbNameChange(item.id, e.target.value.toUpperCase())}
+              className="p-2 pl-9 border border-gray-300 rounded-md text-sm focus:ring-teal-500 focus:border-teal-500 w-full sm:w-auto"
+            />
+          </div>
+        )}
+        <button onClick={() => onRemove(item.id)} className="p-2 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full flex-shrink-0" title="Remove file">
+          <Trash2 size={18} />
+        </button>
+      </div>
+    </div>
+  );
+};
 
-const UploadFilesModal = ({ isOpen, onClose, onUploadConfirm }) => {
-  const [selectedFiles, setSelectedFiles] = useState([]); // Array of { file: File, type: string, id: string }
+const UploadFilesModal = ({ isOpen, onClose, onUploadConfirm, initialFiles = [] }) => {
+  const [selectedFiles, setSelectedFiles] = useState([]); // Array of { file: File, type: string, dbName: string, id: string }
   const fileInputRefModal = useRef(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      const newFiles = initialFiles.map(file => ({
+        file,
+        type: '',
+        dbName: '',
+        id: `${file.name}-${Date.now()}-${Math.random().toString(36).substring(7)}`
+      }));
+      setSelectedFiles(prev => [...prev, ...newFiles]);
+    } else {
+      setSelectedFiles([]); 
+    }
+  }, [isOpen, initialFiles]);
 
   if (!isOpen) return null;
 
@@ -74,16 +131,21 @@ const UploadFilesModal = ({ isOpen, onClose, onUploadConfirm }) => {
     if (event.target.files && event.target.files.length > 0) {
       const newFiles = Array.from(event.target.files).map(file => ({
         file,
-        type: '', // Default type, user needs to select
-        id: `${file.name}-${Date.now()}-${Math.random().toString(36).substring(7)}` // Unique ID for list rendering
+        type: '',
+        dbName: '',
+        id: `${file.name}-${Date.now()}-${Math.random().toString(36).substring(7)}`
       }));
       setSelectedFiles(prev => [...prev, ...newFiles]);
-      event.target.value = ''; // Reset file input
+      event.target.value = '';
     }
   };
 
   const handleTypeChange = (fileId, newType) => {
-    setSelectedFiles(prev => prev.map(f => f.id === fileId ? { ...f, type: newType } : f));
+    setSelectedFiles(prev => prev.map(f => f.id === fileId ? { ...f, type: newType, dbName: newType === 'parmlib' ? f.dbName : '' } : f));
+  };
+
+  const handleDbNameChange = (fileId, newDbName) => {
+    setSelectedFiles(prev => prev.map(f => f.id === fileId ? { ...f, dbName: newDbName } : f));
   };
 
   const handleRemoveFile = (fileId) => {
@@ -96,22 +158,25 @@ const UploadFilesModal = ({ isOpen, onClose, onUploadConfirm }) => {
         toast.error("Please specify a type for all selected files.");
         return;
     }
-    if (filesToUpload.length === 0 && selectedFiles.length > 0) {
-        toast.error("Please select a type for your file(s).");
+    const parmlibWithoutDbName = filesToUpload.some(f => f.type === 'parmlib' && !f.dbName.trim());
+    if (parmlibWithoutDbName) {
+        toast.error("Please provide a DB Name for all PARMLIB files.");
         return;
     }
     if (filesToUpload.length === 0) {
         toast.error("No files selected or types specified for upload.");
         return;
     }
-    onUploadConfirm(filesToUpload.map(f => ({ file: f.file, type: f.type })));
-    onClose(); 
-    setSelectedFiles([]); 
+    onUploadConfirm(filesToUpload.map(f => ({ file: f.file, type: f.type, dbName: f.dbName })));
+    onClose();
   };
+
+  const isUploadDisabled = selectedFiles.length === 0 ||
+    selectedFiles.some(f => !f.type || (f.type === 'parmlib' && !f.dbName.trim()));
 
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-[100] backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full transform transition-all max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full transform transition-all max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center p-5 border-b border-gray-200">
           <h3 className="text-xl font-semibold text-gray-800">Upload Source Files</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-100 rounded-full" aria-label="Close modal">
@@ -126,7 +191,7 @@ const UploadFilesModal = ({ isOpen, onClose, onUploadConfirm }) => {
               className="w-full flex items-center justify-center gap-2 bg-teal-50 hover:bg-teal-100 text-teal-700 font-medium py-3 px-4 rounded-lg border-2 border-dashed border-teal-300 hover:border-teal-400 transition-colors"
             >
               <Upload size={20} />
-              <span>Click to select files</span>
+              <span>Click to add more files</span>
             </button>
             <input ref={fileInputRefModal} type="file" multiple onChange={handleModalFileChange} className="hidden" accept="*" id="modalFileUploadInput" />
           </div>
@@ -135,38 +200,15 @@ const UploadFilesModal = ({ isOpen, onClose, onUploadConfirm }) => {
             <div className="space-y-3">
               <h4 className="text-md font-semibold text-gray-700 mb-2">Files to Upload ({selectedFiles.length}):</h4>
               {selectedFiles.map(item => (
-                <div key={item.id} className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 p-3 bg-gray-50 rounded-md border border-gray-200">
-                  <div className="flex items-center gap-2 flex-grow min-w-0">
-                    <FileText size={18} className="text-gray-500 flex-shrink-0" />
-                    <div className="flex-grow min-w-0">
-                        <p className="truncate text-sm font-medium text-gray-800" title={item.file.name}>
-                        {item.file.name}
-                        </p>
-                        <p className="text-xs text-gray-500">{ (item.file.size / 1024).toFixed(2) } KB</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <select
-                        value={item.type}
-                        onChange={(e) => handleTypeChange(item.id, e.target.value)}
-                        className="p-2 border border-gray-300 rounded-md text-sm focus:ring-teal-500 focus:border-teal-500 w-full sm:w-auto"
-                    >
-                        {SOURCE_TYPE_OPTIONS.map(opt => (
-                        <option key={opt.value} value={opt.value} disabled={opt.value === ''}>
-                            {opt.label}
-                        </option>
-                        ))}
-                    </select>
-                    <button onClick={() => handleRemoveFile(item.id)} className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-full flex-shrink-0" title="Remove file">
-                        <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
+                <FileUploadItem
+                  key={item.id}
+                  item={item}
+                  onTypeChange={handleTypeChange}
+                  onDbNameChange={handleDbNameChange}
+                  onRemove={handleRemoveFile}
+                />
               ))}
             </div>
-          )}
-          {selectedFiles.length === 0 && (
-             <p className="text-sm text-gray-500 text-center py-4">No files selected yet. Click above to add files.</p>
           )}
         </div>
         <div className="bg-gray-50 px-6 py-4 sm:flex sm:flex-row-reverse rounded-b-xl border-t">
@@ -174,14 +216,14 @@ const UploadFilesModal = ({ isOpen, onClose, onUploadConfirm }) => {
             type="button"
             className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-teal-600 text-base font-medium text-white hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
             onClick={handleUpload}
-            disabled={selectedFiles.length === 0 || selectedFiles.some(f => !f.type)}
+            disabled={isUploadDisabled}
           >
             Upload Selected
           </button>
           <button
             type="button"
             className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm"
-            onClick={() => { onClose(); setSelectedFiles([]); }}
+            onClick={onClose}
           >
             Cancel
           </button>
@@ -196,7 +238,7 @@ const SourceFilesPage = () => {
   const { projectId } = useParams();
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  // fileInputRef is removed as it's now in the modal
+  const fileInputRef = useRef(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [fileToView, setFileToView] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -208,6 +250,7 @@ const SourceFilesPage = () => {
   const [isProcessingAction, setIsProcessingAction] = useState(false);
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [initialFilesForModal, setInitialFilesForModal] = useState([]);
 
 
   const openConfirmationModal = ({ title, message, onConfirm, confirmText = "Confirm" }) => {
@@ -315,18 +358,27 @@ const SourceFilesPage = () => {
     }
   };
 
-  const handleActualFileUploads = async (filesWithTypes) => {
-    if (!filesWithTypes || filesWithTypes.length === 0) {
+  const handleFileSelectionForUpload = (event) => {
+    if (event.target.files && event.target.files.length > 0) {
+      setInitialFilesForModal(Array.from(event.target.files));
+      setIsUploadModalOpen(true);
+      event.target.value = ''; // Reset file input
+    }
+  };
+
+  const handleActualFileUploads = async (filesWithDetails) => {
+    if (!filesWithDetails || filesWithDetails.length === 0) {
       return;
     }
 
     const formData = new FormData();
-    filesWithTypes.forEach(item => {
+    filesWithDetails.forEach(item => {
       formData.append('files', item.file);
       formData.append('source_types', item.type);
+      formData.append('m204_db_file_names', item.dbName || '');
     });
 
-    const tempUploadItems = filesWithTypes.map(item => ({
+    const tempUploadItems = filesWithDetails.map(item => ({
         id: `${item.file.name}-${item.type}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
         name: item.file.name,
         type: item.type,
@@ -644,7 +696,7 @@ const SourceFilesPage = () => {
           </div>
           <div className="flex gap-3 items-center">
             <button
-              onClick={() => setIsUploadModalOpen(true)}
+              onClick={() => fileInputRef.current?.click()}
               className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-medium py-2 px-4 rounded-lg shadow-sm transition-colors"
               disabled={isLoading || Object.keys(uploadProgress).length > 0 || isProcessingAction}
             > <Upload size={20} /> <span>Upload Files</span> </button>
@@ -655,7 +707,14 @@ const SourceFilesPage = () => {
           </div>
         </div>
 
-        {/* Hidden file input removed from here, it's in the modal now */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          onChange={handleFileSelectionForUpload}
+          className="hidden"
+          accept="*"
+        />
 
         {Object.keys(uploadProgress).length > 0 && (
           <div className="mb-6 p-4 bg-white rounded-lg shadow border border-gray-200">
@@ -798,6 +857,7 @@ const SourceFilesPage = () => {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onUploadConfirm={handleActualFileUploads}
+        initialFiles={initialFilesForModal}
       />
 
       {isViewModalOpen && fileToView && (

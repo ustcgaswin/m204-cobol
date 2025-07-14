@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom'; // Added useNavigate
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Database,
   Cpu,
@@ -7,15 +7,16 @@ import {
   Package,
   Search as SearchIcon,
   ChevronRight,
-  Edit3,
   Save,
   XCircle,
-  Loader2, // For loading states
-  AlertTriangle // For error messages
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
-import apiClient from "../config/axiosConfig"
+import apiClient from "../config/axiosConfig";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import InventoryList from '../components/InventoryList';
+import InventoryDetailPanel from '../components/InventoryDetailPanel';
 
 const initialInventoryData = {
   m204DbFiles: [],
@@ -59,7 +60,7 @@ const mapProcedure = (item) => ({
   endLine: item.end_line_in_source,
   summary: item.summary || 'N/A',
   procedureContent: item.procedure_content || 'N/A',
-  targetCobolFunctionName: item.target_cobol_function_name || 'N/A', // Updated field
+  targetCobolFunctionName: item.target_cobol_function_name || 'N/A',
   lines: (item.end_line_in_source && item.start_line_in_source) ? (item.end_line_in_source - item.start_line_in_source + 1) : 'N/A',
   complexity: item.complexity || 'N/A',
   isRunnableMain: item.is_runnable_main === null || item.is_runnable_main === undefined ? 'N/A' : String(item.is_runnable_main),
@@ -79,7 +80,7 @@ const mapVariable = (item) => ({
   arrayDimensions: item.attributes?.array_dimensions ? item.attributes.array_dimensions.join(', ') : 'N/A',
   otherKeywords: item.attributes?.other_m204_keywords ? item.attributes.other_m204_keywords.join(', ') : 'N/A',
   cobolMappedVariableName: item.cobol_mapped_variable_name || 'N/A',
-  cobolVariableType: item.cobol_variable_type || 'N/A', // Added COBOL variable type
+  cobolVariableType: item.cobol_variable_type || 'N/A',
   procedureName: item.procedure_name || 'N/A',
   _internalId: item.variable_id,
   _inputSourceId: item.input_source_id,
@@ -116,7 +117,7 @@ const mapOtherM204File = (item) => {
     targetVsamDatasetName: item.target_vsam_dataset_name || 'N/A',
     imageStatements: imageStatementsForModal,
     parsedImageFields: item.file_definition_json?.image_definitions?.[0]?.fields?.map(field => ({
-      fieldName: field.field_name, // Keep original field name for matching
+      fieldName: field.field_name,
       suggestedCobolFieldName: field.suggested_cobol_field_name || 'N/A',
       position: field.position !== null && field.position !== undefined ? field.position : 'N/A',
       m204Type: field.m204_type || 'N/A',
@@ -126,7 +127,7 @@ const mapOtherM204File = (item) => {
       decimalPlaces: field.decimal_places !== null && field.decimal_places !== undefined ? field.decimal_places : 'N/A',
       cobolPictureClause: field.cobol_layout_suggestions?.cobol_picture_clause || 'N/A',
     })) || [],
-    file_definition_json: item.file_definition_json || null, // Pass through the original structure
+    file_definition_json: item.file_definition_json || null,
     _internalId: item.m204_file_id,
     _definedInInputSourceId: item.defined_in_input_source_id,
   };
@@ -211,7 +212,6 @@ const InventoryPage = () => {
   const [isContentModalOpen, setIsContentModalOpen] = useState(false);
   const [modalContent, setModalContent] = useState({ title: '', content: '', renderAsMarkdown: false });
 
-
   const openContentModal = (title, contentText, renderAsMarkdown = false) => {
     setModalContent({ title, content: contentText, renderAsMarkdown });
     setIsContentModalOpen(true);
@@ -254,6 +254,13 @@ const InventoryPage = () => {
       setLoadingStates(prev => ({ ...prev, [tabConfig.id]: false }));
     }
   }, []);
+
+  const handleRefresh = useCallback(() => {
+    if (currentTabConfig) {
+        setSelectedItem(null);
+        fetchDataForTab(currentTabConfig);
+    }
+  }, [currentTabConfig, fetchDataForTab]);
 
   useEffect(() => {
     if (projectId && currentTabConfig) {
@@ -343,109 +350,114 @@ const InventoryPage = () => {
     });
   };
 
+  const handleItemUpdate = (updatedItemData) => {
+    if (!currentTabConfig) return;
+    const updatedItem = currentTabConfig.mapper(updatedItemData);
+    updatedItem.key = updatedItem._internalId || updatedItem.name + Date.now();
+
+    setInventoryData(prevInventory => {
+      const updatedDataArray = prevInventory[currentTabConfig.dataKey].map(item =>
+        item._internalId === updatedItem._internalId ? updatedItem : item
+      );
+      return {
+        ...prevInventory,
+        [currentTabConfig.dataKey]: updatedDataArray,
+      };
+    });
+
+    setSelectedItem(updatedItem);
+    setIsEditing(false);
+    setEditedItemData(null);
+  };
+
   const handleSave = async () => {
-  if (!editedItemData || !currentTabConfig || !(activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures' || activeTab === 'otherDatasets')) return;
+    if (!editedItemData || !currentTabConfig || !(activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures' || activeTab === 'otherDatasets')) return;
 
-  try {
-    let updateEndpoint = '';
-    let updatePayload = {};
+    try {
+      let updateEndpoint = '';
+      let updatePayload = {};
 
-    switch (activeTab) {
-      case 'm204DbFiles':
-        updateEndpoint = `/projects/${projectId}/metadata/m204_files/${editedItemData._internalId}`;
-        updatePayload = {
-          target_vsam_dataset_name: editedItemData.targetVsamDatasetName,
-          target_vsam_type: editedItemData.targetVsamType,
-          primary_key_field_name: editedItemData.primaryKeyFieldName,
-          fields: editedItemData.structure ? editedItemData.structure.map(field => ({
-            field_name: field.fieldName,
-            attributes_text: field.m204Attributes,
-            cobol_picture_clause: field.cobolPictureClause,
-            suggested_cobol_field_name: field.suggestedCobolFieldName,
-            vsam_length: field.length,
-            key_order: field.keyOrder,
-            is_key_component: field.isKeyComponent
-          })) : undefined
-        };
-        break;
+      switch (activeTab) {
+        case 'm204DbFiles':
+          updateEndpoint = `/projects/${projectId}/metadata/m204_files/${editedItemData._internalId}`;
+          updatePayload = {
+            target_vsam_dataset_name: editedItemData.targetVsamDatasetName,
+            target_vsam_type: editedItemData.targetVsamType,
+            primary_key_field_name: editedItemData.primaryKeyFieldName,
+            fields: editedItemData.structure ? editedItemData.structure.map(field => ({
+              field_name: field.fieldName,
+              attributes_text: field.m204Attributes,
+              cobol_picture_clause: field.cobolPictureClause,
+              suggested_cobol_field_name: field.suggestedCobolFieldName,
+              vsam_length: field.length,
+              key_order: field.keyOrder,
+              is_key_component: field.isKeyComponent
+            })) : undefined
+          };
+          break;
 
-      case 'variables':
-        updateEndpoint = `/projects/${projectId}/metadata/variables/${editedItemData._internalId}`;
-        updatePayload = {
-          cobol_mapped_variable_name: editedItemData.cobolMappedVariableName,
-          cobol_variable_type: editedItemData.cobolVariableType
-        };
-        break;
+        case 'variables':
+          updateEndpoint = `/projects/${projectId}/metadata/variables/${editedItemData._internalId}`;
+          updatePayload = {
+            cobol_mapped_variable_name: editedItemData.cobolMappedVariableName,
+            cobol_variable_type: editedItemData.cobolVariableType
+          };
+          break;
 
-      case 'procedures':
-        updateEndpoint = `/projects/${projectId}/metadata/procedures/${editedItemData._internalId}`;
-        updatePayload = {
-          target_cobol_function_name: editedItemData.targetCobolFunctionName
-        };
-        break;
-      
-      case 'otherDatasets': {
-        updateEndpoint = `/projects/${projectId}/metadata/m204_files/${editedItemData._internalId}`;
+        case 'procedures':
+          updateEndpoint = `/projects/${projectId}/metadata/procedures/${editedItemData._internalId}`;
+          updatePayload = {
+            target_cobol_function_name: editedItemData.targetCobolFunctionName
+          };
+          break;
         
-        let newFileDefinitionJson = JSON.parse(JSON.stringify(selectedItem.file_definition_json || { image_definitions: [] }));
+        case 'otherDatasets': {
+          updateEndpoint = `/projects/${projectId}/metadata/m204_files/${editedItemData._internalId}`;
+          
+          let newFileDefinitionJson = JSON.parse(JSON.stringify(selectedItem.file_definition_json || { image_definitions: [] }));
 
-        if (newFileDefinitionJson.image_definitions && newFileDefinitionJson.image_definitions.length > 0 && editedItemData.parsedImageFields) {
-          const originalImageDefinitionFields = newFileDefinitionJson.image_definitions[0].fields || [];
-          newFileDefinitionJson.image_definitions[0].fields = originalImageDefinitionFields.map(origField => {
-            const editedFieldData = editedItemData.parsedImageFields.find(pf => pf.fieldName === origField.field_name);
-            if (editedFieldData) {
-              return {
-                ...origField,
-                suggested_cobol_field_name: editedFieldData.suggestedCobolFieldName,
-                cobol_layout_suggestions: {
-                  ...(origField.cobol_layout_suggestions || {}),
-                  cobol_picture_clause: editedFieldData.cobolPictureClause,
-                },
-              };
-            }
-            return origField;
-          });
+          if (newFileDefinitionJson.image_definitions && newFileDefinitionJson.image_definitions.length > 0 && editedItemData.parsedImageFields) {
+            const originalImageDefinitionFields = newFileDefinitionJson.image_definitions[0].fields || [];
+            newFileDefinitionJson.image_definitions[0].fields = originalImageDefinitionFields.map(origField => {
+              const editedFieldData = editedItemData.parsedImageFields.find(pf => pf.fieldName === origField.field_name);
+              if (editedFieldData) {
+                return {
+                  ...origField,
+                  suggested_cobol_field_name: editedFieldData.suggestedCobolFieldName,
+                  cobol_layout_suggestions: {
+                    ...(origField.cobol_layout_suggestions || {}),
+                    cobol_picture_clause: editedFieldData.cobolPictureClause,
+                  },
+                };
+              }
+              return origField;
+            });
+          }
+          
+          updatePayload = {
+            name: editedItemData.name,
+            m204_logical_dataset_name: editedItemData.m204LogicalDatasetName,
+            target_vsam_dataset_name: editedItemData.targetVsamDatasetName,
+            file_definition_json: newFileDefinitionJson,
+          };
+          break;
         }
-        
-        updatePayload = {
-          name: editedItemData.name,
-          m204_logical_dataset_name: editedItemData.m204LogicalDatasetName,
-          target_vsam_dataset_name: editedItemData.targetVsamDatasetName,
-          file_definition_json: newFileDefinitionJson,
-        };
-        break;
+        default:
+          throw new Error('Unsupported tab for saving');
       }
-      default:
-        throw new Error('Unsupported tab for saving');
+
+      const response = await apiClient.put(updateEndpoint, updatePayload);
+
+      if (response.status === 200) {
+        handleItemUpdate(response.data);
+        alert("Changes saved successfully!");
+      }
+    } catch (error) {
+      console.error("Failed to save changes:", error);
+      const errorMessage = error.response?.data?.detail || error.message || "Failed to save changes to the server.";
+      alert(`Error saving changes: ${errorMessage}`);
     }
-
-    const response = await apiClient.put(updateEndpoint, updatePayload);
-
-    if (response.status === 200) {
-      const updatedItem = currentTabConfig.mapper(response.data);
-      updatedItem.key = updatedItem._internalId || updatedItem.name + Date.now();
-
-      setInventoryData(prevInventory => {
-        const updatedDataArray = prevInventory[currentTabConfig.dataKey].map(item =>
-          item._internalId === editedItemData._internalId ? updatedItem : item
-        );
-        return {
-          ...prevInventory,
-          [currentTabConfig.dataKey]: updatedDataArray,
-        };
-      });
-
-      setSelectedItem(updatedItem);
-      setIsEditing(false);
-      setEditedItemData(null);
-      alert("Changes saved successfully!");
-    }
-  } catch (error) {
-    console.error("Failed to save changes:", error);
-    const errorMessage = error.response?.data?.detail || error.message || "Failed to save changes to the server.";
-    alert(`Error saving changes: ${errorMessage}`);
-  }
-};
+  };
 
 
    const getEditableFields = (item) => {
@@ -815,156 +827,37 @@ const renderImageDefinitionField = (field, index, parentItem) => {
 
         <div className="grid md:grid-cols-[minmax(320px,_1fr)_420px] flex-grow overflow-hidden">
           <div className="overflow-y-auto border-r border-gray-200 p-2 bg-white">
-            {loadingStates[activeTab] && (
-              <div className="p-6 text-center text-gray-500 flex items-center justify-center">
-                <Loader2 size={24} className="animate-spin mr-2" /> Loading {currentTabConfig?.label.toLowerCase()}...
-              </div>
-            )}
-            {errorStates[activeTab] && !loadingStates[activeTab] && (
-              <div className="p-6 text-center text-red-600 bg-red-50 rounded-md m-2">
-                <AlertTriangle size={24} className="mx-auto mb-2" />
-                <p className="font-semibold">Error loading data</p>
-                <p className="text-sm">{errorStates[activeTab]}</p>
-              </div>
-            )}
-            {!loadingStates[activeTab] && !errorStates[activeTab] && filteredData.map((item) => {
-                const Icon = currentTabConfig?.icon || Package;
-                return (
-                  <button
-                    key={item.key}
-                    onClick={() => {
-                        setSelectedItem(item);
-                        setIsEditing(false);
-                    }}
-                    className={`w-full flex items-center text-left px-3 py-3 text-sm rounded-md
-                                ${selectedItem?._internalId === item._internalId && !isEditing ? 'bg-teal-100 text-teal-700 font-medium' : ''}
-                                ${selectedItem?._internalId === item._internalId && isEditing && (activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures' || activeTab === 'otherDatasets') ? 'bg-orange-100 text-orange-700 font-medium' : ''}
-                                ${!(selectedItem?._internalId === item._internalId) ? 'hover:bg-gray-100 text-gray-700' : ''}
-                                transition-colors duration-150`}
-                  >
-                    <Icon size={15} className="mr-2.5 flex-shrink-0 text-gray-500" />
-                    <span className="truncate flex-grow" title={item.name}>{item.name}</span>
-                    {currentTabConfig?.subDisplayField && item[currentTabConfig.subDisplayField] && typeof item[currentTabConfig.subDisplayField] === 'string' && item[currentTabConfig.subDisplayField] !== 'N/A' && (
-                       <span className="ml-2 text-gray-400 text-xs truncate hidden sm:inline" title={item[currentTabConfig.subDisplayField]}>
-                         ({item[currentTabConfig.subDisplayField].substring(0,30)}{item[currentTabConfig.subDisplayField].length > 30 ? '...' : ''})
-                       </span>
-                    )}
-                    <ChevronRight size={15} className="ml-auto text-gray-400 flex-shrink-0" />
-                  </button>
-                );
-              })}
-            {!loadingStates[activeTab] && !errorStates[activeTab] && filteredData.length === 0 && currentTabData.length > 0 && (
-              <div className="p-6 text-center text-sm text-gray-500">
-                No {currentTabConfig?.label.toLowerCase()} found matching your search.
-              </div>
-            )}
-             {!loadingStates[activeTab] && !errorStates[activeTab] && currentTabData.length === 0 && (
-              <div className="p-6 text-center text-sm text-gray-500">
-                No {currentTabConfig?.label.toLowerCase()} found for this project.
-              </div>
-            )}
+            <InventoryList
+              loading={loadingStates[activeTab]}
+              error={errorStates[activeTab]}
+              filteredData={filteredData}
+              currentTabData={currentTabData}
+              currentTabConfig={currentTabConfig}
+              selectedItem={selectedItem}
+              isEditing={isEditing}
+              onSelectItem={(item) => {
+                setSelectedItem(item);
+                setIsEditing(false);
+              }}
+            />
           </div>
 
           <div className="overflow-y-auto p-5 bg-gray-50/70">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-semibold text-base text-gray-700">Item Details</h3>
-              {selectedItem && !isEditing && (activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures' || activeTab === 'otherDatasets') && (
-                <button
-                  onClick={handleEdit}
-                  className="flex items-center gap-1.5 text-xs bg-blue-500 hover:bg-blue-600 text-white py-1.5 px-3 rounded-md transition-colors"
-                >
-                  <Edit3 size={12} /> Edit
-                </button>
-              )}
-            </div>
-             {selectedItem ? (
-              <div className="space-y-1">
-                {Object.entries(getEditableFields(isEditing ? editedItemData : selectedItem)).map(([key, label]) => {
-                    const itemToDisplay = isEditing ? editedItemData : selectedItem;
-                    if (Object.prototype.hasOwnProperty.call(itemToDisplay, key) ||
-                        (key === 'attributesDisplay' && activeTab === 'variables' && Object.prototype.hasOwnProperty.call(itemToDisplay, 'attributes')) ||
-                        (key === 'imageStatementsDisplay' && activeTab === 'otherDatasets' && Object.prototype.hasOwnProperty.call(itemToDisplay, 'imageStatements') && itemToDisplay.imageStatements.length > 0 )) {
-
-                        let valueToRender;
-
-                        if (key === 'attributesDisplay') {
-                            valueToRender = itemToDisplay.attributes;
-                        } else if (key === 'imageStatementsDisplay' && activeTab === 'otherDatasets') {
-                            valueToRender = itemToDisplay.imageStatements;
-                        }
-                        else {
-                            valueToRender = itemToDisplay[key];
-                        }
-                        return <div key={`${itemToDisplay._internalId || itemToDisplay.name}-${key}`}>{renderDetailItem(label, valueToRender, key, selectedItem, selectedItem._internalId || selectedItem.name)}</div>;
-                    }
-                    return null;
-                })}
-
-                {activeTab === 'procedures' &&
-                 (isEditing ? editedItemData : selectedItem)?.parsedParameters?.parameters?.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-300">
-                    <h4 className="text-sm font-semibold text-gray-600 mb-2">Parsed Parameters:</h4>
-                    <div className="space-y-1.5">
-                      {(isEditing ? editedItemData : selectedItem).parsedParameters.parameters.map((param, index) => (
-                        <div key={index} className="grid grid-cols-[auto_1fr] gap-x-2 items-center py-0.5">
-                          <span className="text-xs font-medium text-gray-500 truncate" title={param.name}>{param.name}:</span>
-                          <span className="text-xs text-gray-700 bg-gray-100 px-2 py-0.5 rounded-md font-mono">{param.type}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'm204DbFiles' && selectedItem.structure && selectedItem.structure.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-300">
-                    <h4 className="text-sm font-semibold text-gray-600 mb-2">Structure (Fields):</h4>
-                    {(isEditing && editedItemData?.structure ? editedItemData.structure : selectedItem.structure).map((field, index) => (
-                      renderStructureField(field, index, selectedItem)
-                    ))}
-                    {isEditing && (
-                        <p className="text-xs text-gray-500 mt-2">Field structure editing is enabled.</p>
-                    )}
-                  </div>
-                )}
-                 {activeTab === 'm204DbFiles' && (!selectedItem.structure || selectedItem.structure.length === 0) && (
-                     <p className="text-xs text-gray-500 mt-2">No detailed field structure available for this M204 DB file.</p>
-                 )}
-
-                {activeTab === 'otherDatasets' && selectedItem.parsedImageFields && selectedItem.parsedImageFields.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-300">
-                    <h4 className="text-sm font-semibold text-gray-600 mb-2">Image Fields:</h4>
-                    {(isEditing && editedItemData?.parsedImageFields ? editedItemData.parsedImageFields : selectedItem.parsedImageFields).map((field, index) => (
-                      renderImageDefinitionField(field, index, selectedItem)
-                    ))}
-                     {isEditing && (
-                        <p className="text-xs text-gray-500 mt-2">Image field editing is enabled.</p>
-                    )}
-                  </div>
-                )}
-                {activeTab === 'otherDatasets' && (!selectedItem.parsedImageFields || selectedItem.parsedImageFields.length === 0) && (
-                  <p className="text-xs text-gray-500 mt-2">No parsed image fields available for this file.</p>
-                )}
-
-                {isEditing && (activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures' || activeTab === 'otherDatasets') && (
-                  <div className="pt-4 mt-4 border-t border-gray-200 flex gap-3">
-                    <button
-                      onClick={handleSave}
-                      className="flex-1 flex items-center justify-center gap-1.5 text-sm bg-teal-500 hover:bg-teal-600 text-white py-2 px-3 rounded-md transition-colors"
-                    >
-                      <Save size={16} /> Save
-                    </button>
-                    <button
-                      onClick={handleCancel}
-                      className="flex-1 flex items-center justify-center gap-1.5 text-sm bg-gray-500 hover:bg-gray-600 text-white py-2 px-3 rounded-md transition-colors"
-                    >
-                      <XCircle size={16} /> Cancel
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500 pt-2">Select an item from the list to view its details.</p>
-            )}
+            <InventoryDetailPanel
+              projectId={projectId}
+              selectedItem={selectedItem}
+              isEditing={isEditing}
+              editedItemData={editedItemData}
+              activeTab={activeTab}
+              getEditableFields={getEditableFields}
+              renderDetailItem={renderDetailItem}
+              renderStructureField={renderStructureField}
+              renderImageDefinitionField={renderImageDefinitionField}
+              onEdit={handleEdit}
+              onSave={handleSave}
+              onCancel={handleCancel}
+              onRefresh={handleRefresh}
+            />
           </div>
         </div>
       </div>

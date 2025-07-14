@@ -30,22 +30,24 @@ const staticTabsConfig = [
   { id: 'UnitTest', label: 'Unit Tests', IconComponent: CheckSquare, defaultIconProps: { className: "text-purple-500 group-hover:text-purple-600" } },
 ];
 
-const mapBackendTypeToFrontendType = (backendType) => {
-  if (!backendType) return 'Default';
-  const lowerBackendType = backendType.toLowerCase();
-  if (lowerBackendType === 'cobol') return 'COBOL';
-  if (lowerBackendType.startsWith('jcl')) return 'JCL';
-  if (lowerBackendType === 'unit_test' || lowerBackendType === 'unittest') return 'UnitTest';
+// Updated type mapping that also checks file extension
+const mapBackendTypeToFrontendType = (backendType, fileName) => {
+  const lowerBackendType = backendType ? backendType.toLowerCase() : '';
+  const lowerFileName = fileName ? fileName.toLowerCase() : '';
+  
+  if (lowerBackendType === 'cobol' || lowerFileName.endsWith('.cbl')) return 'COBOL';
+  if (lowerBackendType === 'jcl' || lowerFileName.endsWith('.jcl')) return 'JCL';
+  if (lowerBackendType === 'unit_test' || lowerBackendType === 'unittest' || lowerFileName.includes('test')) return 'UnitTest';
   return 'Default';
 };
 
-// Function to get Monaco language based on artifact type
+// Function to get Monaco language based on artifact type and filename
 const getMonacoLanguage = (artifactType, fileName) => {
   const lowerType = artifactType?.toLowerCase() || '';
   const lowerFileName = fileName?.toLowerCase() || '';
   
-  if (lowerType === 'cobol' || lowerFileName.includes('cobol')) return 'cobol';
-  if (lowerType === 'jcl' || lowerFileName.includes('jcl')) return 'shell';
+  if (lowerType === 'cobol' || lowerFileName.endsWith('.cbl')) return 'cobol';
+  if (lowerType === 'jcl' || lowerFileName.endsWith('.jcl')) return 'shell';
   if (lowerType === 'unittest' || lowerFileName.includes('test')) return 'javascript';
   if (lowerFileName.endsWith('.js')) return 'javascript';
   if (lowerFileName.endsWith('.py')) return 'python';
@@ -219,23 +221,29 @@ const ArtifactsPage = () => {
         );
 
         const backendResponseData = artifactsApiResponse.data;
-        const processedArtifacts = [];
+        // Use a Map to store unique artifacts based on a generated unique key
+        const uniqueArtifactMap = new Map();
 
         if (Array.isArray(backendResponseData)) {
           backendResponseData.forEach(inputSource => {
             if (inputSource && Array.isArray(inputSource.generated_files)) {
               inputSource.generated_files.forEach(file => {
-                const frontendType = mapBackendTypeToFrontendType(file.artifact_type);
-                processedArtifacts.push({
-                  id: `${inputSource.input_source_original_filename}_${file.file_name}`, 
-                  name: file.file_name,
-                  type: frontendType,
-                  content: file.content,
-                  size: file.content ? `${(file.content.length / 1024).toFixed(2)} KB` : '0 KB',
-                  lastModified: new Date().toLocaleDateString(), 
-                  description: `Generated ${frontendType} file for ${inputSource.input_source_original_filename}.`,
-                  url: '#',
-                });
+                // Generate unique key based on input source filename and file name
+                const artifactKey = `${inputSource.input_source_original_filename.trim()}_${file.file_name.trim()}`;
+                // Use improved type mapping that considers file extension
+                const frontendType = mapBackendTypeToFrontendType(file.artifact_type, file.file_name);
+                if (!uniqueArtifactMap.has(artifactKey)) {
+                  uniqueArtifactMap.set(artifactKey, {
+                    id: artifactKey,
+                    name: file.file_name,
+                    type: frontendType,
+                    content: file.content,
+                    size: file.content ? `${(file.content.length / 1024).toFixed(2)} KB` : '0 KB',
+                    lastModified: new Date().toLocaleDateString(),
+                    description: `Generated ${frontendType} file for ${inputSource.input_source_original_filename}.`,
+                    url: '#',
+                  });
+                }
               });
             }
           });
@@ -243,9 +251,11 @@ const ArtifactsPage = () => {
           console.warn("Unexpected API response structure for artifacts:", backendResponseData);
         }
         
-        if (processedArtifacts.length > 0) {
-          setAllArtifacts(processedArtifacts);
-          const uniqueTypesInProject = [...new Set(processedArtifacts.map(a => a.type).filter(Boolean))];
+        const uniqueArtifacts = Array.from(uniqueArtifactMap.values());
+        
+        if (uniqueArtifacts.length > 0) {
+          setAllArtifacts(uniqueArtifacts);
+          const uniqueTypesInProject = [...new Set(uniqueArtifacts.map(a => a.type).filter(Boolean))];
           const currentProjectTabs = staticTabsConfig.filter(tabConf => uniqueTypesInProject.includes(tabConf.id));
           const sortedProjectTabs = currentProjectTabs.sort((a, b) =>
             staticTabsConfig.findIndex(t => t.id === a.id) -
@@ -256,9 +266,9 @@ const ArtifactsPage = () => {
             setActiveTab(sortedProjectTabs[0].id);
           }
           setCurrentPage(1);
-          setTotalPages(Math.ceil(processedArtifacts.length / ARTIFACTS_PER_PAGE) || 1);
+          setTotalPages(Math.ceil(uniqueArtifacts.length / ARTIFACTS_PER_PAGE) || 1);
           try {
-            localStorage.setItem(cacheKey, JSON.stringify({ artifacts: processedArtifacts, timestamp: new Date().toISOString() }));
+            localStorage.setItem(cacheKey, JSON.stringify({ artifacts: uniqueArtifacts, timestamp: new Date().toISOString() }));
             console.log(`Saved artifacts to localStorage for key: ${cacheKey}`);
           } catch (e) {
             console.error("Error saving artifacts to localStorage:", e);
@@ -376,8 +386,7 @@ const ArtifactsPage = () => {
   };
 
   // Pagination logic
-  const displayedArtifacts = allArtifacts
-    .filter(artifact => !activeTab || artifact.type === activeTab);
+  const displayedArtifacts = allArtifacts.filter(artifact => !activeTab || artifact.type === activeTab);
 
   const paginatedArtifacts = displayedArtifacts.slice(
     (currentPage - 1) * ARTIFACTS_PER_PAGE,
