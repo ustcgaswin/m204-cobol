@@ -185,7 +185,7 @@ const MermaidModal = ({ isOpen, onClose, svgContent }) => {
 };
 
 // Mermaid component
-const MermaidDiagram = ({ children }) => {
+const MermaidDiagram = ({ children, onUpdate }) => {
   const [svgContent, setSvgContent] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -254,6 +254,9 @@ const MermaidDiagram = ({ children }) => {
       
       const { fixed_mermaid_code } = response.data;
       if (fixed_mermaid_code) {
+        if (onUpdate) {
+          onUpdate(diagramCode, fixed_mermaid_code);
+        }
         setDiagramCode(fixed_mermaid_code); // This will trigger re-render via useEffect
       } else {
         setError("Auto-fix did not return new code. Please try again.");
@@ -345,7 +348,7 @@ const MermaidDiagram = ({ children }) => {
   );
 };
 
-const markdownComponents = {
+const markdownComponents = (onDiagramUpdate) => ({
     h1: (props) => <h1 className="text-3xl font-bold mb-6 scroll-mt-20" {...props} />,
     h2: (props) => <h2 className="text-2xl font-semibold mb-4 scroll-mt-20" {...props} />,
     h3: (props) => <h3 className="text-xl font-medium mb-3 scroll-mt-20" {...props} />,
@@ -362,7 +365,7 @@ const markdownComponents = {
       
       // Check if it's a mermaid diagram
       if (language === 'mermaid') {
-        return <MermaidDiagram>{children}</MermaidDiagram>;
+        return <MermaidDiagram onUpdate={onDiagramUpdate}>{children}</MermaidDiagram>;
       }
       
       // Regular inline code
@@ -373,7 +376,7 @@ const markdownComponents = {
       
       // Check if the pre contains a mermaid code block
       if (children?.props?.className?.includes('language-mermaid')) {
-        return <MermaidDiagram>{children.props.children}</MermaidDiagram>;
+        return <MermaidDiagram onUpdate={onDiagramUpdate}>{children.props.children}</MermaidDiagram>;
       }
       
       return <pre className="bg-gray-100 p-4 rounded mb-4 overflow-auto text-sm" {...props} />;
@@ -388,7 +391,7 @@ const markdownComponents = {
     tbody: (props) => <tbody className="bg-white divide-y divide-gray-200" {...props} />,
     tr: (props) => <tr className="hover:bg-gray-50 transition-colors" {...props} />,
     td: (props) => <td className="px-4 py-3 whitespace-normal text-sm text-gray-700" {...props} />,
-};
+});
 
 // Skeleton loading component
 const SkeletonLoader = () => (
@@ -476,6 +479,15 @@ const RequirementsPage = () => {
   const [showDesktopSidebar, setShowDesktopSidebar] = useState(true);
   const [tableOfContentsSections, setTableOfContentsSections] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  const handleDiagramUpdate = (oldCode, newCode) => {
+    setRequirements(prevRequirements => {
+      const updatedRequirements = prevRequirements.replace(oldCode, newCode);
+      // Also update the table of contents if the structure changed
+      setTableOfContentsSections(generateTableOfContentsFromMarkdown(updatedRequirements));
+      return updatedRequirements;
+    });
+  };
 
     useEffect(() => {
     const fetchRequirements = async () => {
@@ -806,7 +818,7 @@ const RequirementsPage = () => {
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <article className="prose prose-sm sm:prose lg:prose-lg max-w-none prose-headings:font-semibold prose-a:text-teal-600 hover:prose-a:text-teal-700">
               <ReactMarkdown
-                components={markdownComponents}
+                components={markdownComponents(handleDiagramUpdate)}
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeSlug]}
               >
