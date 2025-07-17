@@ -265,6 +265,37 @@ function App() {
     setCurrentPage(pageNumber);
   };
 
+  const getPaginationItems = () => {
+    const pageNeighbours = 1; // How many pages to show on each side of the current page
+    const totalNumbers = (pageNeighbours * 2) + 3; // Current page + neighbours + first page + last page
+    const totalBlocks = totalNumbers + 2; // With two possible ellipses
+
+    if (totalPages <= totalBlocks) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    const startPage = Math.max(2, currentPage - pageNeighbours);
+    const endPage = Math.min(totalPages - 1, currentPage + pageNeighbours);
+
+    let pages = [1];
+
+    if (startPage > 2) {
+      pages.push('...');
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(i);
+    }
+
+    if (endPage < totalPages - 1) {
+      pages.push('...');
+    }
+
+    pages.push(totalPages);
+
+    return pages;
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
@@ -355,27 +386,33 @@ function App() {
               <button
                 onClick={() => paginate(currentPage - 1)}
                 disabled={currentPage === 1}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Previous
               </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(number => (
-                <button
-                  key={number}
-                  onClick={() => paginate(number)}
-                  className={`px-4 py-2 text-sm font-medium border rounded-md ${
-                    currentPage === number
-                      ? 'bg-teal-500 text-white border-teal-500'
-                      : 'text-gray-700 bg-white border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  {number}
-                </button>
-              ))}
+              {getPaginationItems().map((item, index) =>
+                typeof item === 'number' ? (
+                  <button
+                    key={index}
+                    onClick={() => paginate(item)}
+                    className={`px-4 py-2 text-sm font-medium border rounded-md ${
+                      currentPage === item
+                        ? 'bg-teal-500 text-white border-teal-500'
+                        : 'text-gray-700 bg-white border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {item}
+                  </button>
+                ) : (
+                  <span key={index} className="px-4 py-2 text-sm font-medium text-gray-500">
+                    {item}
+                  </span>
+                )
+              )}
               <button
                 onClick={() => paginate(currentPage + 1)}
                 disabled={currentPage === totalPages || totalPages === 0}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next
               </button>
