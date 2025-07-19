@@ -258,12 +258,12 @@ const MermaidDiagram = ({ children, onUpdate }) => {
         mermaid_code: partialCode,
         error_message: error,
       });
-      const { fixed_mermaid_patch } = response.data; // Only the fixed section
+      const { fixed_mermaid_code } = response.data; // Only the fixed section
 
-      if (fixed_mermaid_patch && errorLine !== null) {
+      if (fixed_mermaid_code && errorLine !== null) {
         // Replace only the affected lines in the diagram code
         const codeLines = diagramCode.split('\n');
-        const patchLines = fixed_mermaid_patch.split('\n');
+        const patchLines = fixed_mermaid_code.split('\n');
         const newCodeLines = [
           ...codeLines.slice(0, start),
           ...patchLines,
@@ -378,7 +378,13 @@ const markdownComponents = (onDiagramUpdate) => ({
       return <MermaidDiagram onUpdate={onDiagramUpdate}>{children}</MermaidDiagram>;
     }
 
-    return <code className="bg-gray-100 p-1 rounded text-sm" {...props} />;
+    return (
+      <code
+        className="bg-gradient-to-r from-slate-50 via-slate-100 to-slate-50 border border-slate-200 shadow-sm px-2 py-1 rounded font-mono text-sm text-slate-800 relative"
+        style={{ fontFamily: 'Fira Mono, Menlo, monospace' }}
+        {...props}
+      />
+    );
   },
   pre: (props) => {
     const { children } = props;
@@ -387,7 +393,13 @@ const markdownComponents = (onDiagramUpdate) => ({
       return <MermaidDiagram onUpdate={onDiagramUpdate}>{children.props.children}</MermaidDiagram>;
     }
 
-    return <pre className="bg-gray-100 p-4 rounded mb-4 overflow-auto text-sm" {...props} />;
+    return (
+      <div className="mb-6">
+        <pre className="bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50 border border-slate-200 shadow-md p-4 rounded-xl overflow-auto text-sm font-mono text-slate-800 transition-all duration-150">
+          {children}
+        </pre>
+      </div>
+    );
   },
   table: (props) => (
     <div className="overflow-x-auto mb-6 shadow-sm border border-gray-200 rounded-lg">
