@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { FileText, ChevronRight, ChevronDown, X, ChevronLeft, Download, AlertTriangle, Loader2, Maximize2 } from 'lucide-react';
+import { FileText, ChevronRight, ChevronDown, X, ChevronLeft, Download, AlertTriangle, Loader2, Maximize2, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import remarkGfm from "remark-gfm";
 import rehypeSlug from 'rehype-slug';
@@ -562,6 +562,9 @@ const RequirementsPage = () => {
   const [showDesktopSidebar, setShowDesktopSidebar] = useState(true);
   const [tableOfContentsSections, setTableOfContentsSections] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [requirementDocumentId, setRequirementDocumentId] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(null);
 
   const handleDiagramUpdate = (oldCode, newCode) => {
     setRequirements(prevRequirements => {
@@ -601,6 +604,7 @@ const RequirementsPage = () => {
           setTableOfContentsSections(tocSections);
           setIsGenerating(false);
           setLoading(false);
+          setRequirementDocumentId(responseData.data.requirement_document_id); // <-- store document id
         } else {
           const shouldGenerate = !responseData?.data;
 
@@ -700,6 +704,38 @@ const RequirementsPage = () => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  // Sync handler
+  const handleSyncWithBackend = async () => {
+    if (!projectId || !requirementDocumentId || !requirements) return;
+    setIsSyncing(true);
+    setSyncError(null);
+
+    // Extract document title from markdown
+    let documentTitle = "Project Requirements Document";
+    const lines = requirements.split('\n');
+    for (const line of lines) {
+      if (line.startsWith('# ')) {
+        documentTitle = line.substring(2).trim();
+        break;
+      }
+    }
+
+    try {
+      await apiClient.put(
+        `/requirements/projects/${projectId}/documents/${requirementDocumentId}`,
+        {
+          project_id: Number(projectId),
+          document_title: documentTitle,
+          markdown_content: requirements,
+        }
+      );
+      setIsSyncing(false);
+    } catch (err) {
+      setSyncError(err.response?.data?.detail || "Sync failed.");
+      setIsSyncing(false);
+    }
   };
 
   const RenderTocNode = ({ section }) => {
@@ -861,6 +897,17 @@ const RequirementsPage = () => {
             </h1>
           </div>
           <div className="flex items-center space-x-3">
+            <button
+              onClick={handleSyncWithBackend}
+              disabled={isSyncing || !requirementDocumentId}
+              className={`p-1.5 rounded-md flex items-center justify-center ${isSyncing || !requirementDocumentId ? 'text-gray-400 cursor-not-allowed' : 'text-teal-600 hover:bg-gray-100 hover:text-teal-800'}`}
+              title="Sync with Backend"
+            >
+              <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
+            </button>
+            {syncError && (
+              <span className="text-xs text-red-600 ml-2">{syncError}</span>
+            )}
             <Link
               to={`/project/${projectId}/artifacts`}
               className="flex items-center px-4 py-2 bg-gradient-to-r from-teal-600 via-teal-700 to-teal-800 text-white rounded-md shadow hover:opacity-90 text-sm"
