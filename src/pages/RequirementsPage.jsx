@@ -8,6 +8,7 @@ import rehypeSlug from 'rehype-slug';
 import GithubSlugger from 'github-slugger';
 import mermaid from 'mermaid';
 import apiClient from '../config/axiosConfig';
+import DOMPurify from 'dompurify';
 
 // Initialize Mermaid
 mermaid.initialize({
@@ -16,6 +17,47 @@ mermaid.initialize({
   securityLevel: 'loose',
   suppressErrorRendering: true
 });
+
+const MermaidEditModal = ({ isOpen, onClose, code, onSave }) => {
+  const [inputCode, setInputCode] = useState(code);
+
+  useEffect(() => {
+    setInputCode(code);
+  }, [code, isOpen]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm"
+        onClick={onClose}
+      ></div>
+      <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+        <h2 className="text-lg font-semibold mb-4">Edit Mermaid Code</h2>
+        <textarea
+          className="w-full h-40 border border-gray-300 rounded p-2 font-mono text-sm mb-4"
+          value={inputCode}
+          onChange={e => setInputCode(e.target.value)}
+        />
+        <div className="flex justify-end space-x-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onSave(inputCode)}
+            className="px-4 py-2 rounded bg-teal-600 text-white hover:bg-teal-700"
+          >
+            Save & Render
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Modal component for Mermaid diagram popup
 const MermaidModal = ({ isOpen, onClose, svgContent }) => {
@@ -181,6 +223,7 @@ const MermaidDiagram = ({ children, onUpdate }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [diagramId] = useState(() => `mermaid-${Math.random().toString(36).substr(2, 9)}`);
   const [diagramCode, setDiagramCode] = useState(children.toString());
@@ -291,6 +334,20 @@ const MermaidDiagram = ({ children, onUpdate }) => {
     }
   };
 
+  const handleCopy = () => {
+    navigator.clipboard.writeText(diagramCode);
+  };
+
+  const handleEdit = () => {
+    setEditModalOpen(true);
+  };
+
+  const handleSaveEdit = (newCode) => {
+    setDiagramCode(newCode);
+    setEditModalOpen(false);
+    setError(null);
+  };
+
   if (isLoading || isFixing) {
     return (
       <div className="flex items-center justify-center p-8 bg-gray-50 rounded-lg mb-4">
@@ -302,9 +359,7 @@ const MermaidDiagram = ({ children, onUpdate }) => {
 
   if (error || !svgContent) {
     return (
-      <div
-        className="p-4 bg-red-50 border border-red-200 rounded-lg mb-4"
-      >
+      <div className="p-4 bg-red-50 border border-red-200 rounded-lg mb-4">
         <div className="flex items-center justify-between text-red-700">
           <div className="flex items-center">
             <AlertTriangle size={16} className="mr-2" />
@@ -324,12 +379,32 @@ const MermaidDiagram = ({ children, onUpdate }) => {
             >
               Auto-Fix
             </button>
+            <button
+              onClick={handleCopy}
+              className="px-3 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              title="Copy Mermaid Code"
+            >
+              Copy
+            </button>
+            <button
+              onClick={handleEdit}
+              className="px-3 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              title="Edit Mermaid Code"
+            >
+              Edit
+            </button>
           </div>
         </div>
         <p className="text-red-600 text-sm mt-2">{error || 'Failed to render diagram'}</p>
         <pre className="mt-2 text-xs text-gray-600 bg-white p-2 rounded border overflow-auto">
           {diagramCode}
         </pre>
+        <MermaidEditModal
+          isOpen={editModalOpen}
+          onClose={() => setEditModalOpen(false)}
+          code={diagramCode}
+          onSave={handleSaveEdit}
+        />
       </div>
     );
   }
@@ -344,7 +419,7 @@ const MermaidDiagram = ({ children, onUpdate }) => {
           <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-white shadow-md rounded-full p-1 border">
             <Maximize2 size={16} className="text-gray-600" />
           </div>
-          <div dangerouslySetInnerHTML={{ __html: svgContent }} />
+          <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(svgContent) }} />
         </div>
         <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-xs bg-gray-800 text-white px-2 py-1 rounded whitespace-nowrap">
           Click to expand
