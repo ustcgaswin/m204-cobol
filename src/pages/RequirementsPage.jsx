@@ -59,7 +59,6 @@ const MermaidEditModal = ({ isOpen, onClose, code, onSave }) => {
   );
 };
 
-// Modal component for Mermaid diagram popup
 const MermaidModal = ({ isOpen, onClose, svgContent }) => {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -217,7 +216,6 @@ const MermaidModal = ({ isOpen, onClose, svgContent }) => {
   );
 };
 
-// Mermaid component
 const MermaidDiagram = ({ children, onUpdate }) => {
   const [svgContent, setSvgContent] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -279,20 +277,18 @@ const MermaidDiagram = ({ children, onUpdate }) => {
     setIsFixing(true);
     setError(null);
 
-    // Extract error line number from error message
     let errorLine = null;
     const lineMatch = error.match(/line\s*(\d+)/i);
     if (lineMatch) {
       errorLine = parseInt(lineMatch[1], 10);
     }
 
-    // Get relevant code window
     let partialCode = diagramCode;
     let start = 0, end = 0;
     if (errorLine) {
       const codeLines = diagramCode.split('\n');
-      start = Math.max(0, errorLine - 6); // -5, zero-based
-      end = Math.min(codeLines.length, errorLine + 4); // +5, zero-based
+      start = Math.max(0, errorLine - 6);
+      end = Math.min(codeLines.length, errorLine + 4);
       partialCode = codeLines.slice(start, end).join('\n');
     }
 
@@ -301,10 +297,9 @@ const MermaidDiagram = ({ children, onUpdate }) => {
         mermaid_code: partialCode,
         error_message: error,
       });
-      const { fixed_mermaid_code } = response.data; // Only the fixed section
+      const { fixed_mermaid_code } = response.data;
 
       if (fixed_mermaid_code && errorLine !== null) {
-        // Replace only the affected lines in the diagram code
         const codeLines = diagramCode.split('\n');
         const patchLines = fixed_mermaid_code.split('\n');
         const newCodeLines = [
@@ -604,7 +599,7 @@ const RequirementsPage = () => {
           setTableOfContentsSections(tocSections);
           setIsGenerating(false);
           setLoading(false);
-          setRequirementDocumentId(responseData.data.requirement_document_id); // <-- store document id
+          setRequirementDocumentId(responseData.data.requirement_document_id);
         } else {
           const shouldGenerate = !responseData?.data;
 
@@ -706,13 +701,11 @@ const RequirementsPage = () => {
     URL.revokeObjectURL(url);
   };
 
-  // Sync handler
   const handleSyncWithBackend = async () => {
     if (!projectId || !requirementDocumentId || !requirements) return;
     setIsSyncing(true);
     setSyncError(null);
 
-    // Extract document title from markdown
     let documentTitle = "Project Requirements Document";
     const lines = requirements.split('\n');
     for (const line of lines) {
@@ -800,11 +793,23 @@ const RequirementsPage = () => {
       <div className="px-4 pt-4 mb-4 shrink-0">
         <h2 className="text-lg font-semibold text-gray-700">Table of Contents</h2>
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-4">
+      <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-4 custom-scrollbar">
         {(loading || isGenerating) ? <SidebarSkeleton /> : renderTableOfContents()}
       </div>
     </div>
   );
+
+  const customScrollbarStyle = `
+    .custom-scrollbar {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      background: transparent;
+    }
+  `;
 
   if (loading || isGenerating) {
     return (
@@ -847,20 +852,31 @@ const RequirementsPage = () => {
             </div>
           </div>
         </header>
+        <style>{customScrollbarStyle}</style>
         <div className="flex flex-1 overflow-hidden">
-          <aside className={`flex flex-col bg-gray-50 border-r border-gray-200 transition-all duration-300 ease-in-out shrink-0 ${showDesktopSidebar ? 'w-72' : 'w-0 overflow-hidden'}`}>
+          <aside className={`flex flex-col bg-gray-50 transition-all duration-300 ease-in-out shrink-0 ${showDesktopSidebar ? 'w-72' : 'w-0 overflow-hidden'}`}>
             {showDesktopSidebar && (
               <div className="flex flex-col h-full">
                 <div className="px-4 pt-4 mb-4 shrink-0">
                   <h2 className="text-lg font-semibold text-gray-700">Table of Contents</h2>
                 </div>
-                <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-4">
+                <div className="flex-1 overflow-y-auto min-h-0 px-4 pb-4 custom-scrollbar">
                   <SidebarSkeleton />
                 </div>
               </div>
             )}
           </aside>
-          <main className="flex-1 overflow-y-auto bg-white">
+          {showDesktopSidebar && (
+            <div
+              className="shrink-0"
+              style={{
+                width: '1px',
+                background: '#e5e7eb',
+                height: '100%',
+              }}
+            />
+          )}
+          <main className="flex-1 bg-white custom-scrollbar" style={{ overflowY: 'auto', height: '100%' }}>
             <SkeletonLoader />
           </main>
         </div>
@@ -933,11 +949,22 @@ const RequirementsPage = () => {
           </div>
         </div>
       </header>
+      <style>{customScrollbarStyle}</style>
       <div className="flex flex-1 overflow-hidden">
-        <aside className={`flex flex-col bg-gray-50 border-r border-gray-200 transition-all duration-300 ease-in-out shrink-0 ${showDesktopSidebar ? 'w-72' : 'w-0 overflow-hidden'}`}>
+        <aside className={`flex flex-col bg-gray-50 transition-all duration-300 ease-in-out shrink-0 ${showDesktopSidebar ? 'w-72' : 'w-0 overflow-hidden'}`}>
           {showDesktopSidebar && renderDesktopSidebarContent()}
         </aside>
-        <main className="flex-1 overflow-y-auto bg-white">
+        {showDesktopSidebar && (
+          <div
+            className="shrink-0"
+            style={{
+              width: '1px',
+              background: '#e5e7eb',
+              height: '100%',
+            }}
+          />
+        )}
+        <main className="flex-1 bg-white custom-scrollbar" style={{ overflowY: 'auto', height: '100%' }}>
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <article className="prose prose-sm sm:prose lg:prose-lg max-w-none prose-headings:font-semibold prose-a:text-teal-600 hover:prose-a:text-teal-700">
               <ReactMarkdown

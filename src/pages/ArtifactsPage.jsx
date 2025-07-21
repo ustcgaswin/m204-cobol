@@ -627,8 +627,14 @@ const ArtifactsPage = () => {
 
       {/* View Content Modal with Monaco Editor */}
       {isViewModalOpen && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+        <div
+          className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4"
+          onClick={() => setIsViewModalOpen(false)}
+        >
+          <div
+            className="relative bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center p-4 border-b">
               <div className="flex items-center">
                 <h3 className="text-lg font-semibold text-gray-900 truncate" title={viewModalData.name}>
@@ -679,13 +685,6 @@ const ArtifactsPage = () => {
                   Download
                 </button>
               </div>
-              <button
-                onClick={() => setIsViewModalOpen(false)}
-                className="inline-flex items-center px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500"
-              >
-                <X size={16} className="mr-1" />
-                Close
-              </button>
             </div>
           </div>
         </div>

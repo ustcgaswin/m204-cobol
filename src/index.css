@@ -2,8 +2,3 @@
 @tailwind components;
 @tailwind utilities;
 
-.prose svg text {
-  fill: #222 !important;
-  font-size: 1rem !important;
-  color: #222 !important;
-}
