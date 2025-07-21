@@ -706,6 +706,27 @@ const InventoryPage = () => {
       );
     }
 
+    if (
+  fieldName === 'primaryKeyFieldName' &&
+  activeTab === 'm204DbFiles' &&
+  typeof value === 'string'
+) {
+  const keys = value.split(',').map(k => k.trim()).filter(Boolean);
+  return (
+    <div className="grid grid-cols-[160px_1fr] gap-1 items-start py-1">
+      <div className="text-sm font-medium text-gray-500 truncate pt-0.5" title={label}>{label}:</div>
+      <div className="flex flex-col gap-0.5 text-sm text-gray-800 break-words">
+        {keys.length > 0 ? (
+          keys.map((key, idx) => (
+            <span key={idx}>{key}</span>
+          ))
+        ) : (
+          <span className="text-gray-400 italic">N/A</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
     return (
       <div className="grid grid-cols-[160px_1fr] gap-1 items-center py-1">

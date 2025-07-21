@@ -8,7 +8,7 @@ import rehypeSlug from 'rehype-slug';
 import GithubSlugger from 'github-slugger';
 import mermaid from 'mermaid';
 import apiClient from '../config/axiosConfig';
-import DOMPurify from 'dompurify';
+
 
 // Initialize Mermaid
 mermaid.initialize({
@@ -17,6 +17,8 @@ mermaid.initialize({
   securityLevel: 'loose',
   suppressErrorRendering: true
 });
+
+
 
 const MermaidEditModal = ({ isOpen, onClose, code, onSave }) => {
   const [inputCode, setInputCode] = useState(code);
@@ -193,16 +195,7 @@ const MermaidModal = ({ isOpen, onClose, svgContent }) => {
                 transformOrigin: 'center center'
               }}
             >
-              <div
-                className="bg-white rounded-lg shadow-lg p-4 select-none"
-                style={{
-                  userSelect: 'none',
-                  WebkitUserSelect: 'none',
-                  MozUserSelect: 'none',
-                  msUserSelect: 'none'
-                }}
-                dangerouslySetInnerHTML={{ __html: svgContent }}
-              />
+              <div dangerouslySetInnerHTML={{ __html: svgContent }} />
             </div>
           </div>
           <div className="absolute bottom-4 left-4 bg-black bg-opacity-75 text-white text-xs px-3 py-2 rounded-lg select-none">
@@ -414,7 +407,7 @@ const MermaidDiagram = ({ children, onUpdate }) => {
           <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-white shadow-md rounded-full p-1 border">
             <Maximize2 size={16} className="text-gray-600" />
           </div>
-          <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(svgContent) }} />
+          <div dangerouslySetInnerHTML={{ __html: svgContent }} />
         </div>
         <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-xs bg-gray-800 text-white px-2 py-1 rounded whitespace-nowrap">
           Click to expand
