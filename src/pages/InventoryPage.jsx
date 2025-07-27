@@ -43,7 +43,7 @@ const mapM204DbFile = (item) => ({
     isKeyComponent: fieldData.vsam_suggestions?.is_key_component || false,
     keyOrder: fieldData.vsam_suggestions?.key_order || 'N/A',
     cobolPictureClause: fieldData.vsam_suggestions?.cobol_picture_clause || 'N/A',
-    suggestedCobolFieldName: fieldData.vsam_suggestions?.suggested_cobol_field_name || 'N/A',
+    // suggestedCobolFieldName removed
   })) : [],
   file_definition_json: item.file_definition_json || null,
   _internalId: item.m204_file_id,
@@ -79,8 +79,7 @@ const mapVariable = (item) => ({
   length: item.attributes?.length || 'N/A',
   arrayDimensions: item.attributes?.array_dimensions ? item.attributes.array_dimensions.join(', ') : 'N/A',
   otherKeywords: item.attributes?.other_m204_keywords ? item.attributes.other_m204_keywords.join(', ') : 'N/A',
-  cobolMappedVariableName: item.cobol_mapped_variable_name || 'N/A',
-  cobolVariableType: item.cobol_variable_type || 'N/A',
+  // cobolMappedVariableName and cobolVariableType removed
   procedureName: item.procedure_name || 'N/A',
   _internalId: item.variable_id,
   _inputSourceId: item.input_source_id,
@@ -195,7 +194,6 @@ const ContentViewModal = ({ isOpen, onClose, title, content, renderAsMarkdown = 
   );
 };
 
-
 const InventoryPage = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -296,7 +294,8 @@ const InventoryPage = () => {
 
 
   const handleEdit = () => {
-    if (!selectedItem || !(activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures' || activeTab === 'otherDatasets')) return;
+    // Remove edit for variables
+    if (!selectedItem || !(activeTab === 'm204DbFiles' || activeTab === 'procedures' || activeTab === 'otherDatasets')) return;
     setIsEditing(true);
     setEditedItemData(JSON.parse(JSON.stringify(selectedItem)));
   };
@@ -371,7 +370,7 @@ const InventoryPage = () => {
   };
 
   const handleSave = async () => {
-    if (!editedItemData || !currentTabConfig || !(activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures' || activeTab === 'otherDatasets')) return;
+    if (!editedItemData || !currentTabConfig || !(activeTab === 'm204DbFiles' || activeTab === 'procedures' || activeTab === 'otherDatasets')) return;
 
     try {
       let updateEndpoint = '';
@@ -388,19 +387,11 @@ const InventoryPage = () => {
               field_name: field.fieldName,
               attributes_text: field.m204Attributes,
               cobol_picture_clause: field.cobolPictureClause,
-              suggested_cobol_field_name: field.suggestedCobolFieldName,
+              // suggested_cobol_field_name removed
               vsam_length: field.length,
               key_order: field.keyOrder,
               is_key_component: field.isKeyComponent
             })) : undefined
-          };
-          break;
-
-        case 'variables':
-          updateEndpoint = `/projects/${projectId}/metadata/variables/${editedItemData._internalId}`;
-          updatePayload = {
-            cobol_mapped_variable_name: editedItemData.cobolMappedVariableName,
-            cobol_variable_type: editedItemData.cobolVariableType
           };
           break;
 
@@ -459,8 +450,7 @@ const InventoryPage = () => {
     }
   };
 
-
-   const getEditableFields = (item) => {
+  const getEditableFields = (item) => {
     if (!item || !currentTabConfig) return {};
     const baseDisplayFields = { name: "Name", type: "Type" };
     let specificFields = {};
@@ -505,8 +495,7 @@ const InventoryPage = () => {
                 dataType: "Data Type",
                 sourceLine: "Source Line",
                 m204Type: "M204 Type",
-                cobolMappedVariableName: "COBOL Mapped Name",
-                cobolVariableType: "COBOL Variable Type",
+                // cobolMappedVariableName and cobolVariableType removed
             };
             if (item.length && item.length !== 'N/A') specificFields.length = "Length";
             if (item.arrayDimensions && item.arrayDimensions !== 'N/A') specificFields.arrayDimensions = "Array Dimensions";
@@ -529,9 +518,9 @@ const InventoryPage = () => {
             break;
     }
     return { ...baseDisplayFields, ...specificFields };
-};
+  };
 
-      const renderDetailItem = (label, value, fieldName, item, fieldId, structureIndex) => {
+  const renderDetailItem = (label, value, fieldName, item, fieldId, structureIndex) => {
     if (value === null || value === undefined) value = '';
     const currentItemForEdit = isEditing ? editedItemData : selectedItem;
 
@@ -613,14 +602,12 @@ const InventoryPage = () => {
     if (isEditing && currentItemForEdit && item && currentItemForEdit._internalId === item._internalId) {
         if (activeTab === 'm204DbFiles') {
             const editableM204TopLevel = ['targetVsamDatasetName', 'targetVsamType', 'primaryKeyFieldName', 'name'];
-            const editableM204Structure = ['cobolPictureClause', 'suggestedCobolFieldName', 'length', 'keyOrder'];
+            const editableM204Structure = ['cobolPictureClause', /*'suggestedCobolFieldName',*/ 'length', 'keyOrder'];
             if (structureIndex === undefined || typeof structureIndex !== 'number') {
                 if (editableM204TopLevel.includes(fieldName)) isFieldReadOnly = false;
             } else {
                 if (editableM204Structure.includes(fieldName)) isFieldReadOnly = false;
             }
-        } else if (activeTab === 'variables') {
-            if (['cobolMappedVariableName', 'cobolVariableType'].includes(fieldName)) isFieldReadOnly = false;
         } else if (activeTab === 'procedures') {
             if (fieldName === 'targetCobolFunctionName') isFieldReadOnly = false;
         } else if (activeTab === 'otherDatasets') {
@@ -639,7 +626,6 @@ const InventoryPage = () => {
         }
     }
 
-
     if (isEditing && currentItemForEdit && item && currentItemForEdit._internalId === item._internalId) {
       let originalValueForTypeCheck = item[fieldName];
       let currentValueToDisplay = currentItemForEdit[fieldName];
@@ -652,7 +638,6 @@ const InventoryPage = () => {
         currentValueToDisplay = currentItemForEdit.parsedImageFields[structureIndex][fieldName];
       }
       
-
       const inputKey = fieldId ? `${fieldId}-${structureIndex !== undefined ? (typeof structureIndex === 'number' ? `struct-${structureIndex}-` : `${structureIndex}-`) : ''}${fieldName}` : fieldName;
 
       if (fieldName === 'attributesDisplay' && activeTab === 'variables') {
@@ -741,14 +726,13 @@ const renderStructureField = (field, index, parentItem) => {
   const isParentEditing = isEditing && editedItemData && editedItemData._internalId === parentItem._internalId;
   const currentFieldData = isParentEditing && editedItemData.structure ? editedItemData.structure[index] : field;
 
-
   return (
     <div key={fieldKey} className="pl-4 mt-2 pt-2 border-t border-gray-200">
       <p className="text-xs font-semibold text-gray-600 mb-1">
         Field: {currentFieldData?.fieldName || field.fieldName}
       </p>
       {renderDetailItem("Field Name", currentFieldData?.fieldName, "fieldName", parentItem, parentItem._internalId, index)}
-      {renderDetailItem("Suggested COBOL Name", currentFieldData?.suggestedCobolFieldName, "suggestedCobolFieldName", parentItem, parentItem._internalId, index)}
+      {/* Suggested COBOL Name removed */}
       {currentFieldData?.m204Attributes !== undefined && renderDetailItem("M204 Attrs", currentFieldData.m204Attributes, "m204Attributes", parentItem, parentItem._internalId, index)}
       {currentFieldData?.length !== undefined && renderDetailItem("VSAM Length", currentFieldData.length, "length", parentItem, parentItem._internalId, index)}
       {currentFieldData?.keyOrder !== undefined && currentFieldData.keyOrder !== 'N/A' && renderDetailItem("Key Order", currentFieldData.keyOrder, "keyOrder", parentItem, parentItem._internalId, index)}
@@ -778,7 +762,6 @@ const renderImageDefinitionField = (field, index, parentItem) => {
     </div>
   );
 };
-
 
   const handleGenerateRequirements = async () => {
     navigate(`/project/${projectId}/requirements`);

@@ -81,7 +81,7 @@ const InventoryDetailPanel = ({
       <div className={isUploading ? 'opacity-40' : ''}>
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-semibold text-base text-gray-700">Item Details</h3>
-          {selectedItem && !isEditing && (activeTab === 'm204DbFiles' || activeTab === 'variables' || activeTab === 'procedures' || activeTab === 'otherDatasets') && (
+          {selectedItem && !isEditing && (activeTab === 'm204DbFiles' || activeTab === 'procedures' || activeTab === 'otherDatasets') && (
             <div className="flex items-center gap-2">
               {activeTab === 'm204DbFiles' && (
                 <>

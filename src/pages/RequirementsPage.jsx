@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { FileText, ChevronRight, ChevronDown, X, ChevronLeft, Download, AlertTriangle, Loader2, Maximize2, RefreshCw } from 'lucide-react';
+import { FileText, ChevronRight, ChevronDown, X, ChevronLeft, Download, AlertTriangle, Loader2, Maximize2, RefreshCw,FolderSyncIcon} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import remarkGfm from "remark-gfm";
 import rehypeSlug from 'rehype-slug';
@@ -554,6 +554,10 @@ const RequirementsPage = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState(null);
 
+  // --- Regenerate state ---
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [regenerateError, setRegenerateError] = useState(null);
+
   const handleDiagramUpdate = (oldCode, newCode) => {
     setRequirements(prevRequirements => {
       const updatedRequirements = prevRequirements.replace(oldCode, newCode);
@@ -724,6 +728,37 @@ const RequirementsPage = () => {
     }
   };
 
+  // --- Regenerate handler ---
+  const handleRegenerateRequirements = async () => {
+    if (!projectId) return;
+    setIsRegenerating(true);
+    setRegenerateError(null);
+    try {
+      const response = await apiClient.post(`/requirements/projects/${projectId}/regenerate-document`);
+      const responseData = response.data;
+      if (responseData && responseData.data && responseData.data.markdown_content) {
+        let fetchedMarkdown = responseData.data.markdown_content;
+        let contentToRender = fetchedMarkdown;
+        const markdownWrapperRegex = /^#\s[^\n]+\n(?:\s*\n)*```markdown\n([\s\S]*?)\n```\s*$/;
+        const match = fetchedMarkdown.match(markdownWrapperRegex);
+        if (match && match[1]) {
+          contentToRender = match[1].trim();
+        }
+        setRequirements(contentToRender);
+        setTableOfContentsSections(generateTableOfContentsFromMarkdown(contentToRender));
+        setRequirementDocumentId(responseData.data.requirement_document_id);
+      }
+    } catch (err) {
+      setRegenerateError(
+        err?.response?.data?.detail ||
+        err?.message ||
+        "Failed to regenerate requirements document."
+      );
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
   const RenderTocNode = ({ section }) => {
     const isExpanded = expandedSections[section.id];
     const children = [];
@@ -804,7 +839,7 @@ const RequirementsPage = () => {
     }
   `;
 
-  if (loading || isGenerating) {
+  if (loading || isGenerating || isRegenerating) {
     return (
       <div className="h-screen bg-gray-100 flex flex-col">
         <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-30 shrink-0">
@@ -906,16 +941,34 @@ const RequirementsPage = () => {
             </h1>
           </div>
           <div className="flex items-center space-x-3">
+            {/* --- Regenerate Button --- */}
+            
             <button
               onClick={handleSyncWithBackend}
               disabled={isSyncing || !requirementDocumentId}
               className={`p-1.5 rounded-md flex items-center justify-center ${isSyncing || !requirementDocumentId ? 'text-gray-400 cursor-not-allowed' : 'text-teal-600 hover:bg-gray-100 hover:text-teal-800'}`}
               title="Sync with Backend"
             >
-              <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
+                  {isSyncing ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : (
+                <RefreshCw size={20} />
+              )}
             </button>
             {syncError && (
               <span className="text-xs text-red-600 ml-2">{syncError}</span>
+            )}
+            <button
+              onClick={handleRegenerateRequirements}
+              disabled={isRegenerating}
+              className={`p-1.5 rounded-md flex items-center justify-center ${isRegenerating ? 'text-gray-400 cursor-not-allowed' : 'text-teal-600 hover:bg-gray-100 hover:text-teal-800'}`}
+              title="Regenerate Requirements"
+            >
+              Regenerate
+            </button>
+            {/* --- Show error if regeneration fails --- */}
+            {regenerateError && (
+              <span className="text-xs text-red-600 ml-2">{regenerateError}</span>
             )}
             <Link
               to={`/project/${projectId}/artifacts`}

@@ -75,6 +75,7 @@ const ArtifactsPage = () => {
   const [viewModalData, setViewModalData] = useState({ name: '', content: '', type: '' });
   const [isZipping, setIsZipping] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false); // <-- Added for regenerate button state
 
   // Monaco Editor refs
   const editorRef = useRef(null);
@@ -142,120 +143,55 @@ const ArtifactsPage = () => {
   }, [isViewModalOpen]);
 
   // Fetch project name and artifacts
-  useEffect(() => {
-    const fetchProjectDetailsAndArtifacts = async () => {
-      if (!projectId) {
-        setProjectNameForDisplay('');
-        setLoading(false);
-        setLoadingProjectName(false);
-        setError("No project ID provided.");
-        setAllArtifacts([]);
-        setAvailableTabs([]);
-        return;
-      }
-
-      setLoading(true);
-      setLoadingProjectName(true);
-      setError(null);
+  const fetchProjectDetailsAndArtifacts = async () => {
+    if (!projectId) {
+      setProjectNameForDisplay('');
+      setLoading(false);
+      setLoadingProjectName(false);
+      setError("No project ID provided.");
       setAllArtifacts([]);
       setAvailableTabs([]);
-      setActiveTab('');
-      
-      let localCacheKeyNamePart = `ProjectID_${projectId}`;
-      let projectName = '';
+      return;
+    }
 
-      try {
-        const projectResponse = await apiClient.get(`/projects/${projectId}`);
-        const projectData = projectResponse.data?.data || projectResponse.data;
-        if (projectData && projectData.project_name) {
-          setProjectNameForDisplay(projectData.project_name);
-          projectName = projectData.project_name;
-          localCacheKeyNamePart = projectData.project_name.replace(/\s+/g, '_');
-        } else {
-          setProjectNameForDisplay(`ID: ${projectId}`);
-          projectName = `ID: ${projectId}`;
-        }
-      } catch (projectError) {
-        console.error(`Failed to fetch project name for ID ${projectId}:`, projectError);
+    setLoading(true);
+    setLoadingProjectName(true);
+    setError(null);
+    setAllArtifacts([]);
+    setAvailableTabs([]);
+    setActiveTab('');
+    
+    let localCacheKeyNamePart = `ProjectID_${projectId}`;
+    let projectName = '';
+
+    try {
+      const projectResponse = await apiClient.get(`/projects/${projectId}`);
+      const projectData = projectResponse.data?.data || projectResponse.data;
+      if (projectData && projectData.project_name) {
+        setProjectNameForDisplay(projectData.project_name);
+        projectName = projectData.project_name;
+        localCacheKeyNamePart = projectData.project_name.replace(/\s+/g, '_');
+      } else {
         setProjectNameForDisplay(`ID: ${projectId}`);
         projectName = `ID: ${projectId}`;
-      } finally {
-        setLoadingProjectName(false);
       }
+    } catch (projectError) {
+      console.error(`Failed to fetch project name for ID ${projectId}:`, projectError);
+      setProjectNameForDisplay(`ID: ${projectId}`);
+      projectName = `ID: ${projectId}`;
+    } finally {
+      setLoadingProjectName(false);
+    }
 
-      const cacheKey = `artifacts_${localCacheKeyNamePart}_${projectId}`;
+    const cacheKey = `artifacts_${localCacheKeyNamePart}_${projectId}`;
 
-      try {
-        const cachedDataString = localStorage.getItem(cacheKey);
-        if (cachedDataString) {
-          const cachedStorageItem = JSON.parse(cachedDataString);
-          if (cachedStorageItem && Array.isArray(cachedStorageItem.artifacts)) {
-            setAllArtifacts(cachedStorageItem.artifacts);
-            const uniqueTypesInProject = [...new Set(cachedStorageItem.artifacts.map(a => a.type).filter(Boolean))];
-            const currentProjectTabs = staticTabsConfig.filter(tabConf => uniqueTypesInProject.includes(tabConf.id));
-            const sortedProjectTabs = currentProjectTabs.sort((a, b) =>
-              staticTabsConfig.findIndex(t => t.id === a.id) -
-              staticTabsConfig.findIndex(t => t.id === b.id)
-            );
-            setAvailableTabs(sortedProjectTabs);
-            if (sortedProjectTabs.length > 0) {
-              setActiveTab(sortedProjectTabs[0].id);
-            }
-            setLoading(false);
-            setCurrentPage(1);
-            setTotalPages(Math.ceil(cachedStorageItem.artifacts.length / ARTIFACTS_PER_PAGE) || 1);
-            console.log(`Loaded artifacts from localStorage for key: ${cacheKey}`);
-            return; 
-          } else {
-            localStorage.removeItem(cacheKey);
-          }
-        }
-      } catch (e) {
-        console.error("Error reading or parsing artifacts from localStorage:", e);
-        localStorage.removeItem(cacheKey);
-      }
-
-      try {
-        const artifactsApiResponse = await apiClient.post(
-          `/artifacts/generate/project/${projectId}`
-        );
-
-        const backendResponseData = artifactsApiResponse.data;
-        // Use a Map to store unique artifacts based on a generated unique key
-        const uniqueArtifactMap = new Map();
-
-        if (Array.isArray(backendResponseData)) {
-          backendResponseData.forEach(inputSource => {
-            if (inputSource && Array.isArray(inputSource.generated_files)) {
-              inputSource.generated_files.forEach(file => {
-                // Generate unique key based on input source filename and file name
-                const artifactKey = `${inputSource.input_source_original_filename.trim()}_${file.file_name.trim()}`;
-                // Use improved type mapping that considers file extension
-                const frontendType = mapBackendTypeToFrontendType(file.artifact_type, file.file_name);
-                if (!uniqueArtifactMap.has(artifactKey)) {
-                  uniqueArtifactMap.set(artifactKey, {
-                    id: artifactKey,
-                    name: file.file_name,
-                    type: frontendType,
-                    content: file.content,
-                    size: file.content ? `${(file.content.length / 1024).toFixed(2)} KB` : '0 KB',
-                    lastModified: new Date().toLocaleDateString(),
-                    description: `Generated ${frontendType} file for ${inputSource.input_source_original_filename}.`,
-                    url: '#',
-                  });
-                }
-              });
-            }
-          });
-        } else {
-          console.warn("Unexpected API response structure for artifacts:", backendResponseData);
-        }
-        
-        const uniqueArtifacts = Array.from(uniqueArtifactMap.values());
-        
-        if (uniqueArtifacts.length > 0) {
-          setAllArtifacts(uniqueArtifacts);
-          const uniqueTypesInProject = [...new Set(uniqueArtifacts.map(a => a.type).filter(Boolean))];
+    try {
+      const cachedDataString = localStorage.getItem(cacheKey);
+      if (cachedDataString) {
+        const cachedStorageItem = JSON.parse(cachedDataString);
+        if (cachedStorageItem && Array.isArray(cachedStorageItem.artifacts)) {
+          setAllArtifacts(cachedStorageItem.artifacts);
+          const uniqueTypesInProject = [...new Set(cachedStorageItem.artifacts.map(a => a.type).filter(Boolean))];
           const currentProjectTabs = staticTabsConfig.filter(tabConf => uniqueTypesInProject.includes(tabConf.id));
           const sortedProjectTabs = currentProjectTabs.sort((a, b) =>
             staticTabsConfig.findIndex(t => t.id === a.id) -
@@ -265,42 +201,107 @@ const ArtifactsPage = () => {
           if (sortedProjectTabs.length > 0) {
             setActiveTab(sortedProjectTabs[0].id);
           }
+          setLoading(false);
           setCurrentPage(1);
-          setTotalPages(Math.ceil(uniqueArtifacts.length / ARTIFACTS_PER_PAGE) || 1);
-          try {
-            localStorage.setItem(cacheKey, JSON.stringify({ artifacts: uniqueArtifacts, timestamp: new Date().toISOString() }));
-            console.log(`Saved artifacts to localStorage for key: ${cacheKey}`);
-          } catch (e) {
-            console.error("Error saving artifacts to localStorage:", e);
-          }
+          setTotalPages(Math.ceil(cachedStorageItem.artifacts.length / ARTIFACTS_PER_PAGE) || 1);
+          console.log(`Loaded artifacts from localStorage for key: ${cacheKey}`);
+          return; 
         } else {
-          const currentProjectIdentifier = projectName || `ID: ${projectId}`;
-          let specificError = `No displayable artifacts found for project ${currentProjectIdentifier}.`;
-          if (Array.isArray(backendResponseData) && backendResponseData.length === 0) {
-             specificError = `No artifacts were generated for project ${currentProjectIdentifier}. The project might be empty or not contain relevant M204 files.`;
-          } else if (!Array.isArray(backendResponseData)){
-             specificError = `Received an unexpected response format from the server for project ${currentProjectIdentifier}.`;
-          }
-          setError(specificError);
+          localStorage.removeItem(cacheKey);
         }
-
-      } catch (e) {
-        console.error("Failed to fetch or process artifacts from API:", e);
-        const currentProjectIdentifier = projectName || `ID: ${projectId}`;
-        let errorMessage = `Failed to load artifacts for project ${currentProjectIdentifier}.`;
-        if (e.response) {
-            errorMessage = e.response.data?.detail || e.message || errorMessage;
-        } else {
-            errorMessage = e.message || errorMessage;
-        }
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (e) {
+      console.error("Error reading or parsing artifacts from localStorage:", e);
+      localStorage.removeItem(cacheKey);
+    }
 
+    try {
+      const artifactsApiResponse = await apiClient.post(
+        `/artifacts/generate/project/${projectId}`
+      );
+
+      const backendResponseData = artifactsApiResponse.data;
+      // Use a Map to store unique artifacts based on a generated unique key
+      const uniqueArtifactMap = new Map();
+
+      if (Array.isArray(backendResponseData)) {
+        backendResponseData.forEach(inputSource => {
+          if (inputSource && Array.isArray(inputSource.generated_files)) {
+            inputSource.generated_files.forEach(file => {
+              // Generate unique key based on input source filename and file name
+              const artifactKey = `${inputSource.input_source_original_filename.trim()}_${file.file_name.trim()}`;
+              // Use improved type mapping that considers file extension
+              const frontendType = mapBackendTypeToFrontendType(file.artifact_type, file.file_name);
+              if (!uniqueArtifactMap.has(artifactKey)) {
+                uniqueArtifactMap.set(artifactKey, {
+                  id: artifactKey,
+                  name: file.file_name,
+                  type: frontendType,
+                  content: file.content,
+                  size: file.content ? `${(file.content.length / 1024).toFixed(2)} KB` : '0 KB',
+                  lastModified: new Date().toLocaleDateString(),
+                  description: `Generated ${frontendType} file for ${inputSource.input_source_original_filename}.`,
+                  url: '#',
+                });
+              }
+            });
+          }
+        });
+      } else {
+        console.warn("Unexpected API response structure for artifacts:", backendResponseData);
+      }
+      
+      const uniqueArtifacts = Array.from(uniqueArtifactMap.values());
+      
+      if (uniqueArtifacts.length > 0) {
+        setAllArtifacts(uniqueArtifacts);
+        const uniqueTypesInProject = [...new Set(uniqueArtifacts.map(a => a.type).filter(Boolean))];
+        const currentProjectTabs = staticTabsConfig.filter(tabConf => uniqueTypesInProject.includes(tabConf.id));
+        const sortedProjectTabs = currentProjectTabs.sort((a, b) =>
+          staticTabsConfig.findIndex(t => t.id === a.id) -
+          staticTabsConfig.findIndex(t => t.id === b.id)
+        );
+        setAvailableTabs(sortedProjectTabs);
+        if (sortedProjectTabs.length > 0) {
+          setActiveTab(sortedProjectTabs[0].id);
+        }
+        setCurrentPage(1);
+        setTotalPages(Math.ceil(uniqueArtifacts.length / ARTIFACTS_PER_PAGE) || 1);
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({ artifacts: uniqueArtifacts, timestamp: new Date().toISOString() }));
+          console.log(`Saved artifacts to localStorage for key: ${cacheKey}`);
+        } catch (e) {
+          console.error("Error saving artifacts to localStorage:", e);
+        }
+      } else {
+        const currentProjectIdentifier = projectName || `ID: ${projectId}`;
+        let specificError = `No displayable artifacts found for project ${currentProjectIdentifier}.`;
+        if (Array.isArray(backendResponseData) && backendResponseData.length === 0) {
+           specificError = `No artifacts were generated for project ${currentProjectIdentifier}. The project might be empty or not contain relevant M204 files.`;
+        } else if (!Array.isArray(backendResponseData)){
+           specificError = `Received an unexpected response format from the server for project ${currentProjectIdentifier}.`;
+        }
+        setError(specificError);
+      }
+
+    } catch (e) {
+      console.error("Failed to fetch or process artifacts from API:", e);
+      const currentProjectIdentifier = projectName || `ID: ${projectId}`;
+      let errorMessage = `Failed to load artifacts for project ${currentProjectIdentifier}.`;
+      if (e.response) {
+          errorMessage = e.response.data?.detail || e.message || errorMessage;
+      } else {
+          errorMessage = e.message || errorMessage;
+      }
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchProjectDetailsAndArtifacts();
-
+    // eslint-disable-next-line
   }, [projectId]);
 
   // Update pagination when artifacts or tab changes
@@ -385,6 +386,36 @@ const ArtifactsPage = () => {
     }
   };
 
+  // Regenerate artifacts handler
+  const handleRegenerateArtifacts = async () => {
+    if (!projectId) return;
+    setIsRegenerating(true);
+    setLoading(true);
+    setError(null);
+
+    try {
+      await apiClient.post(`/artifacts/regenerate/project/${projectId}`);
+      // Remove cached artifacts for this project
+      let localCacheKeyNamePart = `ProjectID_${projectId}`;
+      if (projectNameForDisplay && !projectNameForDisplay.startsWith("ID: ")) {
+        localCacheKeyNamePart = projectNameForDisplay.replace(/\s+/g, '_');
+      }
+      const cacheKey = `artifacts_${localCacheKeyNamePart}_${projectId}`;
+      localStorage.removeItem(cacheKey);
+      // Refetch artifacts
+      await fetchProjectDetailsAndArtifacts();
+    } catch (e) {
+      setError(
+        e.response?.data?.detail ||
+        e.message ||
+        "Failed to regenerate artifacts. Please try again."
+      );
+    } finally {
+      setIsRegenerating(false);
+      setLoading(false);
+    }
+  };
+
   // Pagination logic
   const displayedArtifacts = allArtifacts.filter(artifact => !activeTab || artifact.type === activeTab);
 
@@ -444,10 +475,10 @@ const ArtifactsPage = () => {
                 Viewable and downloadable output files for project <span className="font-semibold text-teal-600">{projectNameForDisplay || `ID: ${projectId}`}</span>.
               </p>
             </div>
-            <div className="mt-4 sm:mt-0 sm:ml-4 shrink-0">
+            <div className="mt-4 sm:mt-0 sm:ml-4 shrink-0 flex flex-col sm:flex-row gap-2">
               <button
                 onClick={handleDownloadAll}
-                disabled={isZipping || allArtifacts.length === 0}
+                disabled={isZipping || allArtifacts.length === 0 || isRegenerating}
                 className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gradient-to-r from-teal-500 to-green-500 hover:from-teal-600 hover:to-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isZipping ? (
@@ -459,6 +490,23 @@ const ArtifactsPage = () => {
                   <>
                     <Download size={16} className="mr-2" />
                     Download All Artifacts
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleRegenerateArtifacts}
+                disabled={isRegenerating}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isRegenerating ? (
+                  <>
+                    <Loader2 size={16} className="mr-2 animate-spin" />
+                    Regenerating...
+                  </>
+                ) : (
+                  <>
+                    <Package size={16} className="mr-2" />
+                    Regenerate Artifacts
                   </>
                 )}
               </button>
